@@ -33,6 +33,26 @@ let currentDirection = { x: 0, y: -1 }; // 기본 방향 (위쪽)
 let autoFireTimer;
 let gameScene; // scene 참조 저장
 
+// 레벨업 시스템 변수들
+let levelUpItems; // 레벨업 아이템 그룹
+let playerStats = {
+    level: 1,
+    exp: 0,
+    expToNext: 1, // 개발용으로 10분의 1로 감소
+    health: 100,
+    maxHealth: 100,
+    attackPower: 1,
+    fireRate: 1000, // 밀리초
+    moveSpeed: 160
+};
+let expBar;
+let levelText;
+let healthBar;
+let upgradeUI = null;
+let isPaused = false;
+let statsPanel; // 스탯 패널
+let isStatsVisible = false;
+
 function preload() {
     // 이미지 없이 도형으로만 구현
 }
@@ -100,6 +120,9 @@ function create() {
     // 우하단
     this.add.rectangle(WORLD_WIDTH - cornerSize, WORLD_HEIGHT - cornerSize, cornerSize * 2, cornerSize * 2, cornerColor);
     
+    // 레벨업 아이템 생성
+    createLevelUpItems();
+    
     // 탱크 몸체 생성 (화면 중앙에 고정)
     tank = this.add.rectangle(
         gameConfig.width / 2, 
@@ -134,12 +157,23 @@ function create() {
         maxSize: 50 // 큰 맵이므로 총알 수 증가
     });
 
-    // 키보드 입력 설정 (화살표 키만)
+    // 키보드 입력 설정 (화살표 키 + 스페이스바)
     cursors = this.input.keyboard.createCursorKeys();
-
-    // 자동 발사 타이머 (1초마다)
+    
+    // 스페이스바 키 추가
+    gameScene.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    
+    // 마우스 클릭으로도 발사 가능하게 추가 (쿨다운 적용)
+    this.input.on('pointerdown', () => {
+        if (!isPaused && gameScene.time.now - lastFired >= Math.min(playerStats.fireRate / 2, 200)) {
+            fireBullet();
+            lastFired = gameScene.time.now;
+        }
+    });
+    
+    // 자동 발사 타이머 (갤러그 스타일 유지)
     autoFireTimer = this.time.addEvent({
-        delay: 1000,
+        delay: playerStats.fireRate,
         callback: fireBullet,
         callbackScope: this,
         loop: true
@@ -147,6 +181,226 @@ function create() {
     
     // 미니맵 생성
     createMinimap();
+    
+    // UI 생성
+    createUI();
+}
+
+function createLevelUpItems() {
+    levelUpItems = [];
+    
+    // 맵 전체에 레벨업 아이템 랜덤 배치 (100개)
+    for (let i = 0; i < 100; i++) {
+        const x = Math.random() * (WORLD_WIDTH - 200) + 100;
+        const y = Math.random() * (WORLD_HEIGHT - 200) + 100;
+        
+        // 경험치 아이템 생성 (파란색 다이아몬드)
+        const item = gameScene.add.polygon(x, y, [
+            0, -8,   // 위
+            8, 0,    // 오른쪽
+            0, 8,    // 아래
+            -8, 0    // 왼쪽
+        ], 0x00aaff);
+        item.setStrokeStyle(2, 0x0088cc);
+        
+        // 반짝이는 효과
+        gameScene.tweens.add({
+            targets: item,
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 1000,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+        
+        levelUpItems.push(item);
+    }
+}
+
+function createUI() {
+    // 컴팩트한 UI 패널 배경 (반투명)
+    const uiPanel = gameScene.add.rectangle(15, 15, 220, 80, 0x000000, 0.6);
+    uiPanel.setOrigin(0, 0);
+    uiPanel.setScrollFactor(0);
+    uiPanel.setStrokeStyle(1, 0x444444);
+    
+    // 레벨 텍스트 (작게)
+    levelText = gameScene.add.text(25, 25, `Lv.${playerStats.level}`, {
+        fontSize: '16px',
+        fill: '#ffff00',
+        fontFamily: 'Arial',
+        fontStyle: 'bold'
+    });
+    levelText.setScrollFactor(0);
+    
+    // 체력바 배경 (작게)
+    const healthBarBg = gameScene.add.rectangle(70, 25, 150, 12, 0x333333);
+    healthBarBg.setOrigin(0, 0);
+    healthBarBg.setScrollFactor(0);
+    healthBarBg.setStrokeStyle(1, 0x666666);
+    
+    // 체력바
+    healthBar = gameScene.add.rectangle(71, 26, 148, 10, 0x00ff00);
+    healthBar.setOrigin(0, 0);
+    healthBar.setScrollFactor(0);
+    
+    // 경험치바 배경 (작게)
+    const expBarBg = gameScene.add.rectangle(70, 45, 150, 8, 0x333333);
+    expBarBg.setOrigin(0, 0);
+    expBarBg.setScrollFactor(0);
+    expBarBg.setStrokeStyle(1, 0x666666);
+    
+    // 경험치바
+    expBar = gameScene.add.rectangle(71, 46, 148, 6, 0x00aaff);
+    expBar.setOrigin(0, 0);
+    expBar.setScrollFactor(0);
+    
+    // 간단한 경험치 텍스트
+    gameScene.expText = gameScene.add.text(25, 60, `EXP: ${playerStats.exp}/${playerStats.expToNext}`, {
+        fontSize: '12px',
+        fill: '#cccccc',
+        fontFamily: 'Arial'
+    });
+    gameScene.expText.setScrollFactor(0);
+    
+    // 스탯 토글 버튼 (우하단)
+    const statsButton = gameScene.add.rectangle(gameConfig.width - 60, gameConfig.height - 30, 100, 40, 0x333333, 0.8);
+    statsButton.setScrollFactor(0);
+    statsButton.setStrokeStyle(2, 0x666666);
+    statsButton.setInteractive();
+    
+    const statsButtonText = gameScene.add.text(gameConfig.width - 60, gameConfig.height - 30, 'STATS', {
+        fontSize: '14px',
+        fill: '#ffffff',
+        fontFamily: 'Arial',
+        fontStyle: 'bold'
+    });
+    statsButtonText.setOrigin(0.5);
+    statsButtonText.setScrollFactor(0);
+    
+    // 스탯 버튼 클릭 이벤트
+    statsButton.on('pointerdown', toggleStatsPanel);
+    
+    // 호버 효과
+    statsButton.on('pointerover', () => {
+        statsButton.setFillStyle(0x555555, 0.9);
+    });
+    
+    statsButton.on('pointerout', () => {
+        statsButton.setFillStyle(0x333333, 0.8);
+    });
+    
+    // 스탯 패널 생성 (초기에는 숨김)
+    createStatsPanel();
+}
+
+function createStatsPanel() {
+    const panelWidth = 200;
+    const panelHeight = 180;
+    const panelX = gameConfig.width - panelWidth - 20;
+    const panelY = gameConfig.height - panelHeight - 80;
+    
+    // 스탯 패널 배경
+    const statsPanelBg = gameScene.add.rectangle(
+        panelX + panelWidth/2, 
+        panelY + panelHeight/2, 
+        panelWidth, 
+        panelHeight, 
+        0x000000, 
+        0.85
+    );
+    statsPanelBg.setScrollFactor(0);
+    statsPanelBg.setStrokeStyle(2, 0x666666);
+    statsPanelBg.setVisible(false);
+    
+    // 스탯 제목
+    const statsTitle = gameScene.add.text(panelX + 10, panelY + 10, '탱크 스탯', {
+        fontSize: '16px',
+        fill: '#ffff00',
+        fontFamily: 'Arial',
+        fontStyle: 'bold'
+    });
+    statsTitle.setScrollFactor(0);
+    statsTitle.setVisible(false);
+    
+    // 스탯 텍스트들
+    gameScene.statsTexts = {
+        level: gameScene.add.text(panelX + 10, panelY + 35, '', {
+            fontSize: '14px',
+            fill: '#ffffff',
+            fontFamily: 'Arial'
+        }),
+        health: gameScene.add.text(panelX + 10, panelY + 55, '', {
+            fontSize: '14px',
+            fill: '#00ff00',
+            fontFamily: 'Arial'
+        }),
+        attack: gameScene.add.text(panelX + 10, panelY + 75, '', {
+            fontSize: '14px',
+            fill: '#ff6666',
+            fontFamily: 'Arial'
+        }),
+        fireRate: gameScene.add.text(panelX + 10, panelY + 95, '', {
+            fontSize: '14px',
+            fill: '#ffaa00',
+            fontFamily: 'Arial'
+        }),
+        moveSpeed: gameScene.add.text(panelX + 10, panelY + 115, '', {
+            fontSize: '14px',
+            fill: '#00aaff',
+            fontFamily: 'Arial'
+        }),
+        exp: gameScene.add.text(panelX + 10, panelY + 140, '', {
+            fontSize: '14px',
+            fill: '#cccccc',
+            fontFamily: 'Arial'
+        })
+    };
+    
+    // 모든 스탯 텍스트 초기 설정
+    Object.values(gameScene.statsTexts).forEach(text => {
+        text.setScrollFactor(0);
+        text.setVisible(false);
+    });
+    
+    // 스탯 패널 요소들 저장
+    statsPanel = {
+        background: statsPanelBg,
+        title: statsTitle,
+        texts: gameScene.statsTexts
+    };
+    
+    // 초기 스탯 업데이트
+    updateStatsPanel();
+}
+
+function toggleStatsPanel() {
+    isStatsVisible = !isStatsVisible;
+    
+    // 패널 표시/숨김
+    statsPanel.background.setVisible(isStatsVisible);
+    statsPanel.title.setVisible(isStatsVisible);
+    Object.values(statsPanel.texts).forEach(text => {
+        text.setVisible(isStatsVisible);
+    });
+    
+    if (isStatsVisible) {
+        updateStatsPanel();
+    }
+}
+
+function updateStatsPanel() {
+    if (!statsPanel || !statsPanel.texts) return;
+    
+    const fireRatePerSec = (1000 / playerStats.fireRate).toFixed(1);
+    
+    statsPanel.texts.level.setText(`레벨: ${playerStats.level}`);
+    statsPanel.texts.health.setText(`체력: ${playerStats.health}/${playerStats.maxHealth}`);
+    statsPanel.texts.attack.setText(`공격력: ${playerStats.attackPower}`);
+    statsPanel.texts.fireRate.setText(`발사속도: ${fireRatePerSec}/초`);
+    statsPanel.texts.moveSpeed.setText(`이동속도: ${playerStats.moveSpeed}`);
+    statsPanel.texts.exp.setText(`경험치: ${playerStats.exp}/${playerStats.expToNext}`);
 }
 
 function createMinimap() {
@@ -196,24 +450,25 @@ function createMinimap() {
 }
 
 function update(time, delta) {
+    if (isPaused) return; // 업그레이드 UI가 열려있으면 게임 일시정지
+    
     // 탱크 이동 (화살표 키) - 실제로는 카메라가 움직임
-    const speed = 160;
     let moveX = 0;
     let moveY = 0;
     
     if (cursors.left.isDown) {
-        moveX = -speed;
+        moveX = -playerStats.moveSpeed;
         currentDirection = { x: -1, y: 0 };
     } else if (cursors.right.isDown) {
-        moveX = speed;
+        moveX = playerStats.moveSpeed;
         currentDirection = { x: 1, y: 0 };
     }
 
     if (cursors.up.isDown) {
-        moveY = -speed;
+        moveY = -playerStats.moveSpeed;
         currentDirection = { x: 0, y: -1 };
     } else if (cursors.down.isDown) {
-        moveY = speed;
+        moveY = playerStats.moveSpeed;
         currentDirection = { x: 0, y: 1 };
     }
 
@@ -226,6 +481,14 @@ function update(time, delta) {
         currentDirection = { x: -1, y: 1 };
     } else if (cursors.right.isDown && cursors.down.isDown) {
         currentDirection = { x: 1, y: 1 };
+    }
+    
+    // 수동 발사도 가능 (스페이스바나 마우스 클릭)
+    if (gameScene.spaceKey.isDown) {
+        if (time - lastFired >= Math.min(playerStats.fireRate / 2, 200)) { // 수동 발사는 더 빠르게
+            fireBullet();
+            lastFired = time;
+        }
     }
 
     // 탱크의 월드 위치 업데이트
@@ -242,6 +505,9 @@ function update(time, delta) {
         tank.worldX - gameConfig.width / 2,
         tank.worldY - gameConfig.height / 2
     );
+    
+    // 레벨업 아이템 충돌 체크
+    checkLevelUpItemCollision();
     
     // 미니맵 탱크 위치 업데이트
     if (gameScene.minimap && gameScene.minimapTank) {
@@ -289,12 +555,228 @@ function update(time, delta) {
     }
 }
 
-function fireBullet() {
-    // scene이 없으면 발사하지 않음
-    if (!gameScene) return;
+function checkLevelUpItemCollision() {
+    const tankRadius = 30; // 탱크 충돌 반경
     
-    // 총알 속도 설정 (현재 이동 방향으로)
-    const bulletSpeed = 300;
+    levelUpItems.forEach((item, index) => {
+        if (!item.active) return;
+        
+        const distance = Math.sqrt(
+            Math.pow(tank.worldX - item.x, 2) + 
+            Math.pow(tank.worldY - item.y, 2)
+        );
+        
+        if (distance < tankRadius) {
+            // 아이템 획득
+            item.destroy();
+            levelUpItems.splice(index, 1);
+            
+            // 경험치 획득
+            gainExp(1);
+        }
+    });
+}
+
+function gainExp(amount) {
+    playerStats.exp += amount;
+    
+    // 레벨업 체크
+    if (playerStats.exp >= playerStats.expToNext) {
+        levelUp();
+    }
+    
+    // UI 업데이트
+    updateUI();
+}
+
+function levelUp() {
+    playerStats.level++;
+    playerStats.exp -= playerStats.expToNext;
+    playerStats.expToNext = Math.ceil(playerStats.expToNext * 1.5); // 다음 레벨 필요 경험치 증가 (개발용으로 작은 수치)
+    
+    // 업그레이드 선택 UI 표시
+    showUpgradeUI();
+}
+
+function showUpgradeUI() {
+    isPaused = true;
+    
+    // 반투명 배경
+    const overlay = gameScene.add.rectangle(
+        gameConfig.width / 2, 
+        gameConfig.height / 2, 
+        gameConfig.width, 
+        gameConfig.height, 
+        0x000000, 
+        0.7
+    );
+    overlay.setScrollFactor(0);
+    
+    // 업그레이드 패널
+    const panel = gameScene.add.rectangle(
+        gameConfig.width / 2, 
+        gameConfig.height / 2, 
+        400, 
+        300, 
+        0x333333
+    );
+    panel.setScrollFactor(0);
+    panel.setStrokeStyle(3, 0x666666);
+    
+    // 제목
+    const title = gameScene.add.text(
+        gameConfig.width / 2, 
+        gameConfig.height / 2 - 120, 
+        `레벨 ${playerStats.level} 달성!`, 
+        {
+            fontSize: '24px',
+            fill: '#ffff00',
+            fontFamily: 'Arial'
+        }
+    );
+    title.setOrigin(0.5);
+    title.setScrollFactor(0);
+    
+    const subtitle = gameScene.add.text(
+        gameConfig.width / 2, 
+        gameConfig.height / 2 - 90, 
+        '업그레이드할 스탯을 선택하세요:', 
+        {
+            fontSize: '16px',
+            fill: '#ffffff',
+            fontFamily: 'Arial'
+        }
+    );
+    subtitle.setOrigin(0.5);
+    subtitle.setScrollFactor(0);
+    
+    // 업그레이드 옵션들
+    const options = [
+        { name: '체력 +20', key: 'health', color: 0x00ff00 },
+        { name: '공격력 +1', key: 'attack', color: 0xff0000 },
+        { name: '발사속도 +20%', key: 'fireRate', color: 0xffaa00 },
+        { name: '이동속도 +20', key: 'moveSpeed', color: 0x00aaff }
+    ];
+    
+    const buttons = [];
+    
+    options.forEach((option, index) => {
+        const y = gameConfig.height / 2 - 30 + (index * 40);
+        
+        // 버튼 배경
+        const button = gameScene.add.rectangle(
+            gameConfig.width / 2, 
+            y, 
+            300, 
+            30, 
+            option.color
+        );
+        button.setScrollFactor(0);
+        button.setStrokeStyle(2, 0xffffff);
+        button.setInteractive();
+        
+        // 버튼 텍스트
+        const buttonText = gameScene.add.text(
+            gameConfig.width / 2, 
+            y, 
+            option.name, 
+            {
+                fontSize: '16px',
+                fill: '#ffffff',
+                fontFamily: 'Arial'
+            }
+        );
+        buttonText.setOrigin(0.5);
+        buttonText.setScrollFactor(0);
+        
+        // 클릭 이벤트
+        button.on('pointerdown', () => {
+            applyUpgrade(option.key);
+            closeUpgradeUI([overlay, panel, title, subtitle, ...buttons]);
+        });
+        
+        // 호버 효과
+        button.on('pointerover', () => {
+            button.setScale(1.05);
+        });
+        
+        button.on('pointerout', () => {
+            button.setScale(1);
+        });
+        
+        buttons.push(button, buttonText);
+    });
+    
+    upgradeUI = [overlay, panel, title, subtitle, ...buttons];
+}
+
+function applyUpgrade(upgradeType) {
+    switch (upgradeType) {
+        case 'health':
+            playerStats.maxHealth += 20;
+            playerStats.health = Math.min(playerStats.health + 20, playerStats.maxHealth);
+            break;
+        case 'attack':
+            playerStats.attackPower += 1;
+            break;
+        case 'fireRate':
+            playerStats.fireRate = Math.max(100, playerStats.fireRate * 0.8); // 20% 빨라짐 (최소 0.1초)
+            // 자동 발사 타이머 업데이트
+            if (autoFireTimer) {
+                autoFireTimer.destroy();
+            }
+            autoFireTimer = gameScene.time.addEvent({
+                delay: playerStats.fireRate,
+                callback: fireBullet,
+                callbackScope: gameScene,
+                loop: true
+            });
+            break;
+        case 'moveSpeed':
+            playerStats.moveSpeed += 20;
+            break;
+    }
+    
+    updateUI();
+}
+
+function closeUpgradeUI(uiElements) {
+    uiElements.forEach(element => {
+        if (element && element.destroy) {
+            element.destroy();
+        }
+    });
+    upgradeUI = null;
+    isPaused = false;
+}
+
+function updateUI() {
+    // 레벨 텍스트 업데이트
+    levelText.setText(`Lv.${playerStats.level}`);
+    
+    // 체력바 업데이트
+    const healthPercent = playerStats.health / playerStats.maxHealth;
+    healthBar.displayWidth = 148 * healthPercent;
+    
+    // 경험치바 업데이트
+    const expPercent = playerStats.exp / playerStats.expToNext;
+    expBar.displayWidth = 148 * expPercent;
+    
+    // 경험치 텍스트 업데이트
+    gameScene.expText.setText(`EXP: ${playerStats.exp}/${playerStats.expToNext}`);
+    
+    // 스탯 패널이 열려있으면 업데이트
+    if (isStatsVisible) {
+        updateStatsPanel();
+    }
+}
+
+function fireBullet() {
+    // scene이 없거나 게임이 일시정지되면 발사하지 않음
+    if (!gameScene || isPaused) return;
+    
+    // 총알 속도 설정
+    const bulletSpeed = 400; // 갤러그처럼 빠른 총알
     
     // 방향 벡터 정규화
     const length = Math.sqrt(currentDirection.x * currentDirection.x + currentDirection.y * currentDirection.y);
@@ -307,24 +789,99 @@ function fireBullet() {
     const barrelWorldX = tank.worldX + Math.cos(angle) * barrelDistance;
     const barrelWorldY = tank.worldY + Math.sin(angle) * barrelDistance;
     
-    // 총알 객체 생성 (월드 좌표로)
-    const bullet = {
-        x: barrelWorldX,
-        y: barrelWorldY,
-        vx: normalizedX * bulletSpeed,
-        vy: normalizedY * bulletSpeed,
-        graphic: null,
-        active: true
-    };
+    // 공격력에 따른 총알 패턴
+    const bulletSize = 3 + (playerStats.attackPower - 1) * 1.5;
+    const bullets = [];
     
-    // 총알 그래픽 생성 (월드 좌표에)
-    bullet.graphic = gameScene.add.circle(bullet.x, bullet.y, 4, 0xffff00);
+    if (playerStats.attackPower >= 3) {
+        // 레벨 3 이상: 3발 동시 발사 (갤러그 스타일)
+        const spreadAngle = 0.3; // 퍼짐 각도
+        
+        for (let i = -1; i <= 1; i++) {
+            const bulletAngle = angle + (i * spreadAngle);
+            const bullet = createBullet(
+                barrelWorldX + Math.cos(bulletAngle) * 10,
+                barrelWorldY + Math.sin(bulletAngle) * 10,
+                Math.cos(bulletAngle) * bulletSpeed,
+                Math.sin(bulletAngle) * bulletSpeed,
+                bulletSize,
+                0xffff00
+            );
+            bullets.push(bullet);
+        }
+    } else if (playerStats.attackPower >= 2) {
+        // 레벨 2: 2발 동시 발사
+        const offset = 8;
+        const perpX = -normalizedY * offset;
+        const perpY = normalizedX * offset;
+        
+        const bullet1 = createBullet(
+            barrelWorldX + perpX,
+            barrelWorldY + perpY,
+            normalizedX * bulletSpeed,
+            normalizedY * bulletSpeed,
+            bulletSize,
+            0xffff00
+        );
+        
+        const bullet2 = createBullet(
+            barrelWorldX - perpX,
+            barrelWorldY - perpY,
+            normalizedX * bulletSpeed,
+            normalizedY * bulletSpeed,
+            bulletSize,
+            0xffff00
+        );
+        
+        bullets.push(bullet1, bullet2);
+    } else {
+        // 레벨 1: 단발
+        const bullet = createBullet(
+            barrelWorldX,
+            barrelWorldY,
+            normalizedX * bulletSpeed,
+            normalizedY * bulletSpeed,
+            bulletSize,
+            0xffff00
+        );
+        bullets.push(bullet);
+    }
     
-    // 총알을 배열에 추가
+    // 총알 배열에 추가
     if (!gameScene.bulletArray) {
         gameScene.bulletArray = [];
     }
-    gameScene.bulletArray.push(bullet);
+    gameScene.bulletArray.push(...bullets);
+    
+    // 발사 효과음 (시각적 효과)
+    createMuzzleFlash(barrelWorldX, barrelWorldY);
+}
+
+function createBullet(x, y, vx, vy, size, color) {
+    const bullet = {
+        x: x,
+        y: y,
+        vx: vx,
+        vy: vy,
+        graphic: null,
+        active: true,
+        damage: playerStats.attackPower,
+        trail: [] // 총알 궤적
+    };
+    
+    // 총알 그래픽 생성 (더 밝고 눈에 띄게)
+    bullet.graphic = gameScene.add.circle(x, y, size, color);
+    bullet.graphic.setStrokeStyle(1, 0xffffff);
+    
+    // 총알 궤적 효과
+    gameScene.tweens.add({
+        targets: bullet.graphic,
+        scaleX: 1.2,
+        scaleY: 1.2,
+        duration: 100,
+        yoyo: true,
+        ease: 'Power2'
+    });
     
     // 3초 후 총알 자동 제거
     gameScene.time.delayedCall(3000, () => {
@@ -335,6 +892,48 @@ function fireBullet() {
             }
         }
     });
+    
+    return bullet;
+}
+
+function createMuzzleFlash(x, y) {
+    // 포구 화염 효과
+    const flash = gameScene.add.circle(x, y, 15, 0xffffff, 0.8);
+    
+    gameScene.tweens.add({
+        targets: flash,
+        scaleX: 2,
+        scaleY: 2,
+        alpha: 0,
+        duration: 150,
+        ease: 'Power2',
+        onComplete: () => {
+            flash.destroy();
+        }
+    });
+    
+    // 작은 파티클 효과들
+    for (let i = 0; i < 5; i++) {
+        const particle = gameScene.add.circle(
+            x + (Math.random() - 0.5) * 20,
+            y + (Math.random() - 0.5) * 20,
+            2,
+            0xffaa00,
+            0.7
+        );
+        
+        gameScene.tweens.add({
+            targets: particle,
+            x: particle.x + (Math.random() - 0.5) * 40,
+            y: particle.y + (Math.random() - 0.5) * 40,
+            alpha: 0,
+            duration: 300 + Math.random() * 200,
+            ease: 'Power2',
+            onComplete: () => {
+                particle.destroy();
+            }
+        });
+    }
 }
 
 // 게임 시작
