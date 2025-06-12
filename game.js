@@ -53,6 +53,10 @@ let isPaused = false;
 let statsPanel; // 스탯 패널
 let isStatsVisible = false;
 
+// 오디오 컨텍스트 (사운드 효과용)
+let audioContext;
+let isSoundEnabled = true;
+
 function preload() {
     // 이미지 없이 도형으로만 구현
 }
@@ -60,6 +64,9 @@ function preload() {
 function create() {
     // scene 참조 저장
     gameScene = this;
+    
+    // 오디오 컨텍스트 초기화
+    initAudio();
     
     // 월드 크기 설정 (4배 크기)
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
@@ -279,6 +286,20 @@ function createUI() {
     statsButtonText.setOrigin(0.5);
     statsButtonText.setScrollFactor(0);
     
+    // 사운드 토글 버튼 (우하단, 스탯 버튼 옆)
+    const soundButton = gameScene.add.rectangle(gameConfig.width - 170, gameConfig.height - 30, 80, 40, 0x444444, 0.8);
+    soundButton.setScrollFactor(0);
+    soundButton.setStrokeStyle(2, 0x666666);
+    soundButton.setInteractive();
+    
+    gameScene.soundButtonText = gameScene.add.text(gameConfig.width - 170, gameConfig.height - 30, isSoundEnabled ? '🔊' : '🔇', {
+        fontSize: '16px',
+        fill: '#ffffff',
+        fontFamily: 'Arial'
+    });
+    gameScene.soundButtonText.setOrigin(0.5);
+    gameScene.soundButtonText.setScrollFactor(0);
+    
     // 스탯 버튼 클릭 이벤트
     statsButton.on('pointerdown', toggleStatsPanel);
     
@@ -289,6 +310,21 @@ function createUI() {
     
     statsButton.on('pointerout', () => {
         statsButton.setFillStyle(0x333333, 0.8);
+    });
+    
+    // 사운드 버튼 클릭 이벤트
+    soundButton.on('pointerdown', () => {
+        toggleSound();
+        gameScene.soundButtonText.setText(isSoundEnabled ? '🔊' : '🔇');
+    });
+    
+    // 사운드 버튼 호버 효과
+    soundButton.on('pointerover', () => {
+        soundButton.setFillStyle(0x666666, 0.9);
+    });
+    
+    soundButton.on('pointerout', () => {
+        soundButton.setFillStyle(0x444444, 0.8);
     });
     
     // 스탯 패널 생성 (초기에는 숨김)
@@ -491,6 +527,14 @@ function update(time, delta) {
         }
     }
 
+    // 대각선 이동 시 속도 정규화 (피타고라스 정리 보정)
+    if (moveX !== 0 && moveY !== 0) {
+        // 대각선 이동 시 √2로 나누어 속도 정규화
+        const diagonalFactor = 1 / Math.sqrt(2);
+        moveX *= diagonalFactor;
+        moveY *= diagonalFactor;
+    }
+    
     // 탱크의 월드 위치 업데이트
     const deltaTime = delta / 1000;
     tank.worldX += moveX * deltaTime;
@@ -857,7 +901,8 @@ function fireBullet() {
     }
     gameScene.bulletArray.push(...bullets);
     
-    // 발사 효과음 (시각적 효과)
+    // 발사 효과음과 시각적 효과
+    playFireSound();
     createMuzzleFlash(barrelWorldX, barrelWorldY);
 }
 
@@ -938,6 +983,91 @@ function createMuzzleFlash(x, y) {
             }
         });
     }
+}
+
+// 오디오 시스템 함수들
+function initAudio() {
+    try {
+        // 오디오 컨텍스트 생성 (브라우저 호환성 고려)
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // 사용자 상호작용 후 오디오 컨텍스트 활성화
+        document.addEventListener('click', resumeAudioContext, { once: true });
+        document.addEventListener('keydown', resumeAudioContext, { once: true });
+        
+    } catch (error) {
+        console.log('오디오 컨텍스트 생성 실패:', error);
+        isSoundEnabled = false;
+    }
+}
+
+function resumeAudioContext() {
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+}
+
+function playFireSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        // 발사음 생성 (짧고 강렬한 소리)
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        const filterNode = audioContext.createBiquadFilter();
+        
+        // 오실레이터 설정 (낮은 주파수로 시작해서 빠르게 감소)
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(150, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.1);
+        
+        // 필터 설정 (고주파 제거로 부드럽게)
+        filterNode.type = 'lowpass';
+        filterNode.frequency.setValueAtTime(800, audioContext.currentTime);
+        
+        // 볼륨 설정 (빠르게 페이드아웃)
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+        
+        // 노드 연결
+        oscillator.connect(filterNode);
+        filterNode.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        // 재생 및 정리
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.15);
+        
+        // 추가 효과음 (높은 주파수 클릭음)
+        setTimeout(() => {
+            if (!audioContext || !isSoundEnabled) return;
+            
+            const clickOsc = audioContext.createOscillator();
+            const clickGain = audioContext.createGain();
+            
+            clickOsc.type = 'sine';
+            clickOsc.frequency.setValueAtTime(1200, audioContext.currentTime);
+            clickOsc.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.05);
+            
+            clickGain.gain.setValueAtTime(0.1, audioContext.currentTime);
+            clickGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+            
+            clickOsc.connect(clickGain);
+            clickGain.connect(audioContext.destination);
+            
+            clickOsc.start(audioContext.currentTime);
+            clickOsc.stop(audioContext.currentTime + 0.05);
+        }, 10);
+        
+    } catch (error) {
+        console.log('사운드 재생 오류:', error);
+    }
+}
+
+// 사운드 토글 함수 (필요시 사용)
+function toggleSound() {
+    isSoundEnabled = !isSoundEnabled;
+    console.log('사운드:', isSoundEnabled ? '켜짐' : '꺼짐');
 }
 
 // 게임 시작
