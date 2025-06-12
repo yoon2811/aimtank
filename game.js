@@ -522,10 +522,11 @@ function update(time, delta) {
     const angle = Math.atan2(currentDirection.y, currentDirection.x);
     tank.rotation = angle;
     
-    // 포신 위치 업데이트 (화면 중앙 기준)
-    const barrelDistance = 25;
-    tankBarrel.x = gameConfig.width / 2 + Math.cos(angle) * barrelDistance;
-    tankBarrel.y = gameConfig.height / 2 + Math.sin(angle) * barrelDistance;
+    // 포신 위치 업데이트 (화면 중앙 기준, 이동속도에 따라 조정)
+    const speedMultiplier = playerStats.moveSpeed / 160;
+    const visualBarrelDistance = 25 + (speedMultiplier - 1) * 5; // 시각적 포신도 조정
+    tankBarrel.x = gameConfig.width / 2 + Math.cos(angle) * visualBarrelDistance;
+    tankBarrel.y = gameConfig.height / 2 + Math.sin(angle) * visualBarrelDistance;
     tankBarrel.rotation = angle;
 
     // 총알 업데이트 (수동으로 움직임 처리)
@@ -571,8 +572,8 @@ function checkLevelUpItemCollision() {
             item.destroy();
             levelUpItems.splice(index, 1);
             
-            // 경험치 획득
-            gainExp(1);
+            // 경험치 획득 (개발용으로 바로 레벨업)
+            gainExp(playerStats.expToNext);
         }
     });
 }
@@ -775,17 +776,20 @@ function fireBullet() {
     // scene이 없거나 게임이 일시정지되면 발사하지 않음
     if (!gameScene || isPaused) return;
     
-    // 총알 속도 설정
-    const bulletSpeed = 400; // 갤러그처럼 빠른 총알
+    // 총알 속도 설정 (이동속도에 비례해서 증가)
+    const baseBulletSpeed = 400;
+    const speedMultiplier = playerStats.moveSpeed / 160; // 기본 이동속도 대비 배율
+    const bulletSpeed = baseBulletSpeed * Math.max(1, speedMultiplier); // 최소 기본 속도 보장
     
     // 방향 벡터 정규화
     const length = Math.sqrt(currentDirection.x * currentDirection.x + currentDirection.y * currentDirection.y);
     const normalizedX = currentDirection.x / length;
     const normalizedY = currentDirection.y / length;
     
-    // 포신의 실제 월드 위치 계산
+    // 포신의 실제 월드 위치 계산 (이동속도에 따라 더 앞쪽에서 발사)
     const angle = Math.atan2(currentDirection.y, currentDirection.x);
-    const barrelDistance = 25;
+    const baseBarrelDistance = 25;
+    const barrelDistance = baseBarrelDistance + (speedMultiplier - 1) * 10; // 빠를수록 더 앞에서 발사
     const barrelWorldX = tank.worldX + Math.cos(angle) * barrelDistance;
     const barrelWorldY = tank.worldY + Math.sin(angle) * barrelDistance;
     
