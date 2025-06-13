@@ -36,7 +36,8 @@ const GAME_CONFIG = {
         POWER_SHOT: {
             DURATION: 30000,        // 30초 지속 (다음 발사까지)
             COOLDOWN: 60000,        // 25초 쿨다운
-            DAMAGE: 100             // 100 데미지
+            DAMAGE: 100,            // 100 데미지
+            SPEED_MULTIPLIER: 3     // 3배 빠른 속도
         },
         SHIELD: {
             DURATION: 3000,         // 3초 지속
@@ -236,26 +237,29 @@ class Player {
                     }
                 }
                 
-                // 총알 속도 = 기본 속도 + 플레이어 이동 속도의 일부
-                const velocityBonus = 0.5; // 플레이어 속도의 50%만 추가
-                const bulletSpeed = GAME_CONFIG.BULLET_SPEED + 
-                    Math.sqrt(playerVelocityX * playerVelocityX + playerVelocityY * playerVelocityY) * velocityBonus;
-                
-                // 강력한 공격 스킬이 활성화된 경우 데미지 증가
+                // 강력한 공격 스킬이 활성화된 경우 데미지와 속도 증가
                 let bulletDamage = this.stats.attackPower;
                 let isPowerShot = false;
+                let bulletSpeed = GAME_CONFIG.BULLET_SPEED;
+                
                 if (this.skills.powerShot.isActive) {
                     bulletDamage = GAME_CONFIG.SKILLS.POWER_SHOT.DAMAGE;
+                    bulletSpeed = GAME_CONFIG.BULLET_SPEED * GAME_CONFIG.SKILLS.POWER_SHOT.SPEED_MULTIPLIER;
                     isPowerShot = true;
                     // 스킬 사용 후 즉시 비활성화 (한 발만 강력한 공격)
                     this.skills.powerShot.isActive = false;
-                    console.log(`플레이어 ${this.id}의 강력한 공격 스킬 사용! 데미지: ${bulletDamage}`);
+                    console.log(`플레이어 ${this.id}의 강력한 공격 스킬 사용! 데미지: ${bulletDamage}, 속도: ${bulletSpeed}`);
                     
                     // 해당 플레이어에게 스킬 종료 알림
                     const socket = [...io.sockets.sockets.values()].find(s => s.id === this.id);
                     if (socket) {
                         socket.emit('skill_deactivated', { skillType: 'power_shot' });
                     }
+                } else {
+                    // 일반 총알 속도 = 기본 속도 + 플레이어 이동 속도의 일부
+                    const velocityBonus = 0.5; // 플레이어 속도의 50%만 추가
+                    bulletSpeed = GAME_CONFIG.BULLET_SPEED + 
+                        Math.sqrt(playerVelocityX * playerVelocityX + playerVelocityY * playerVelocityY) * velocityBonus;
                 }
                 
                 const bullet = new Bullet(
@@ -714,25 +718,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 채팅 메시지 처리
-    socket.on('chat_message', (data) => {
-        const player = gameState.players[socket.id];
-        if (!player || !data.message) return;
-        
-        // 메시지 길이 제한 (최대 100자)
-        const message = data.message.substring(0, 100);
-        
-        // 욕설 필터링 (간단한 예시)
-        const filteredMessage = message.replace(/[욕설|비속어|fuck|shit]/gi, '***');
-        
-        console.log(`채팅 메시지 - ${player.name}: ${filteredMessage}`);
-        
-        // 모든 플레이어에게 채팅 메시지 브로드캐스트 (플레이어 ID 포함)
-        io.emit('chat_message', {
-            playerId: socket.id,
-            message: filteredMessage
-        });
-    });
+
 
     // 연결 해제
     socket.on('disconnect', () => {
