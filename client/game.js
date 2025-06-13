@@ -1601,28 +1601,29 @@ function createMinimap(worldSize) {
     const minimapX = gameConfig.width - minimapSize - 20;
     const minimapY = 20;
     
-    // 미니맵 배경
+    // 미니맵 배경 (반투명)
     const minimapBg = gameScene.add.rectangle(
         minimapX + minimapSize / 2, 
         minimapY + minimapSize / 2, 
         minimapSize, 
         minimapSize, 
-        0x222222, 
-        0.9
+        0x000000, 
+        0.4  // 반투명도 설정 (0.4 = 40% 불투명)
     );
-    minimapBg.setStrokeStyle(2, 0xffffff);
+    minimapBg.setStrokeStyle(2, 0xffffff, 0.8);  // 테두리도 약간 투명하게
     minimapBg.setScrollFactor(0);
     minimapBg.setDepth(10);
     
-    // 미니맵 월드 표시 (회색)
+    // 미니맵 월드 표시 (반투명 회색)
     const minimapWorld = gameScene.add.rectangle(
         minimapX + minimapSize / 2, 
         minimapY + minimapSize / 2, 
         minimapSize - 10, 
         minimapSize - 10, 
-        0x808080
+        0x808080,
+        0.3  // 더 투명하게 설정
     );
-    minimapWorld.setStrokeStyle(1, 0x333333);
+    minimapWorld.setStrokeStyle(1, 0x666666, 0.6);  // 테두리도 투명하게
     minimapWorld.setScrollFactor(0);
     minimapWorld.setDepth(10);
     
@@ -1633,6 +1634,7 @@ function createMinimap(worldSize) {
         5, 
         0x00ff00
     );
+    minimapTank.setStrokeStyle(1, 0xffffff, 0.8);  // 흰색 테두리로 더 선명하게
     minimapTank.setScrollFactor(0);
     minimapTank.setDepth(12); // 다른 플레이어보다 위에 표시
     
@@ -1712,6 +1714,7 @@ function updateMinimapOtherPlayers(allPlayers) {
                 3, 
                 playerColor
             );
+            minimapOtherPlayers[playerId].setStrokeStyle(1, 0xffffff, 0.6);  // 흰색 테두리 추가
             minimapOtherPlayers[playerId].setScrollFactor(0);
             minimapOtherPlayers[playerId].setDepth(11);
         } else {
