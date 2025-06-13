@@ -1054,15 +1054,14 @@ function updateGameState(state) {
             if (players[id].barrel) players[id].barrel.destroy();
             if (players[id].nameText) players[id].nameText.destroy();
             
-            // 방어막 효과 제거 (새로운 다층 구조)
+            // 방어막 효과 제거 (간단한 메인 방어막만)
             if (players[id].shieldEffect) {
                 if (players[id].shieldEffect.mainShield) players[id].shieldEffect.mainShield.destroy();
-                if (players[id].shieldEffect.innerCore) players[id].shieldEffect.innerCore.destroy();
-                if (players[id].shieldEffect.outerRing1) players[id].shieldEffect.outerRing1.destroy();
-                if (players[id].shieldEffect.outerRing2) players[id].shieldEffect.outerRing2.destroy();
-                if (players[id].shieldEffect.particles) {
-                    players[id].shieldEffect.particles.forEach(particle => particle.destroy());
-                }
+            }
+            
+            // 강타 발사 대기 표시 제거
+            if (players[id].powerShotIndicator) {
+                players[id].powerShotIndicator.mainCircle.destroy();
             }
             
             // 미니맵에서도 제거
@@ -1263,58 +1262,18 @@ function updatePlayer(player, data) {
             player.nameText.setAlpha(shouldShow ? 0.5 : 1);
         }
     } else if (hasShield) {
-        // 방어막 스킬 활성화 시 화려한 다층 방어막 효과
+        // 방어막 스킬 활성화 시 간단한 방어막 효과
         if (!player.shieldEffect) {
-                         // 방어막 효과 컨테이너 생성
-             player.shieldEffect = {
-                 // 1. 메인 방어막 (큰 원형)
-                 mainShield: gameScene.add.circle(player.graphic.x, player.graphic.y, 30, 0x00aaff, 0.4),
-                 
-                 // 2. 내부 코어 (밝은 파란색 원)
-                 innerCore: gameScene.add.circle(player.graphic.x, player.graphic.y, 15, 0x00ffff, 0.6),
-                 
-                 // 3. 외부 링 1 (회전하는 링)
-                 outerRing1: gameScene.add.circle(player.graphic.x, player.graphic.y, 35, 0x000000, 0),
-                 
-                 // 4. 외부 링 2 (반대 방향 회전)
-                 outerRing2: gameScene.add.circle(player.graphic.x, player.graphic.y, 40, 0x000000, 0),
-                 
-                 // 5. 에너지 파티클들
-                 particles: []
-             };
-             
-             // 메인 방어막 설정
-             player.shieldEffect.mainShield.setStrokeStyle(4, 0x00ffff, 1);
-             player.shieldEffect.mainShield.setDepth(1);
-             
-             // 내부 코어 설정
-             player.shieldEffect.innerCore.setStrokeStyle(2, 0xffffff, 0.8);
-             player.shieldEffect.innerCore.setDepth(2);
+            // 방어막 효과 생성 (간단한 메인 원만)
+            player.shieldEffect = {
+                mainShield: gameScene.add.circle(player.graphic.x, player.graphic.y, 30, 0x00aaff, 0.4)
+            };
             
-            // 외부 링 1 설정
-            player.shieldEffect.outerRing1.setStrokeStyle(3, 0x0088ff, 0.7);
-            player.shieldEffect.outerRing1.setDepth(0);
+            // 메인 방어막 설정
+            player.shieldEffect.mainShield.setStrokeStyle(4, 0x00ffff, 1);
+            player.shieldEffect.mainShield.setDepth(1);
             
-            // 외부 링 2 설정
-            player.shieldEffect.outerRing2.setStrokeStyle(2, 0x00ccff, 0.5);
-            player.shieldEffect.outerRing2.setDepth(0);
-            
-            // 에너지 파티클 생성 (8개)
-            for (let i = 0; i < 8; i++) {
-                const angle = (i / 8) * Math.PI * 2;
-                const distance = 28;
-                const particleX = player.graphic.x + Math.cos(angle) * distance;
-                const particleY = player.graphic.y + Math.sin(angle) * distance;
-                
-                const particle = gameScene.add.circle(particleX, particleY, 3, 0x00ffff, 0.8);
-                particle.setStrokeStyle(1, 0xffffff, 1);
-                particle.setDepth(3);
-                player.shieldEffect.particles.push(particle);
-            }
-            
-            // 애니메이션 효과들
-            
-            // 1. 메인 방어막 펄스 효과
+            // 간단한 펄스 효과만
             gameScene.tweens.add({
                 targets: player.shieldEffect.mainShield,
                 scaleX: 1.1,
@@ -1326,78 +1285,10 @@ function updatePlayer(player, data) {
                 ease: 'Sine.easeInOut'
             });
             
-            // 2. 내부 코어 깜빡임
-            gameScene.tweens.add({
-                targets: player.shieldEffect.innerCore,
-                alpha: 0.3,
-                scaleX: 0.8,
-                scaleY: 0.8,
-                duration: 600,
-                yoyo: true,
-                repeat: -1,
-                ease: 'Power2'
-            });
-            
-            // 3. 외부 링 1 회전 (시계방향)
-            gameScene.tweens.add({
-                targets: player.shieldEffect.outerRing1,
-                rotation: Math.PI * 2,
-                duration: 2000,
-                repeat: -1,
-                ease: 'Linear'
-            });
-            
-            // 4. 외부 링 2 회전 (반시계방향)
-            gameScene.tweens.add({
-                targets: player.shieldEffect.outerRing2,
-                rotation: -Math.PI * 2,
-                duration: 3000,
-                repeat: -1,
-                ease: 'Linear'
-            });
-            
-            // 5. 파티클 회전 및 깜빡임
-            player.shieldEffect.particles.forEach((particle, index) => {
-                // 파티클 회전
-                gameScene.tweens.add({
-                    targets: particle,
-                    rotation: Math.PI * 2,
-                    duration: 1500 + (index * 100),
-                    repeat: -1,
-                    ease: 'Linear'
-                });
-                
-                // 파티클 깜빡임
-                gameScene.tweens.add({
-                    targets: particle,
-                    alpha: 0.2,
-                    scaleX: 0.5,
-                    scaleY: 0.5,
-                    duration: 400 + (index * 50),
-                    yoyo: true,
-                    repeat: -1,
-                    ease: 'Sine.easeInOut'
-                });
-            });
-            
         } else {
-            // 방어막 효과들 위치 업데이트
+            // 방어막 효과 위치 업데이트
             player.shieldEffect.mainShield.x = player.graphic.x;
             player.shieldEffect.mainShield.y = player.graphic.y;
-            player.shieldEffect.innerCore.x = player.graphic.x;
-            player.shieldEffect.innerCore.y = player.graphic.y;
-            player.shieldEffect.outerRing1.x = player.graphic.x;
-            player.shieldEffect.outerRing1.y = player.graphic.y;
-            player.shieldEffect.outerRing2.x = player.graphic.x;
-            player.shieldEffect.outerRing2.y = player.graphic.y;
-            
-            // 파티클들 위치 업데이트 (회전하면서 따라다님)
-            player.shieldEffect.particles.forEach((particle, index) => {
-                const angle = (index / player.shieldEffect.particles.length) * Math.PI * 2 + (Date.now() * 0.002);
-                const distance = 28;
-                particle.x = player.graphic.x + Math.cos(angle) * distance;
-                particle.y = player.graphic.y + Math.sin(angle) * distance;
-            });
         }
         
         // 플레이어 정상 투명도
@@ -1409,14 +1300,8 @@ function updatePlayer(player, data) {
     } else {
         // 방어막 효과 제거
         if (player.shieldEffect) {
-            // 모든 방어막 효과 요소들 제거
+            // 메인 방어막만 제거
             if (player.shieldEffect.mainShield) player.shieldEffect.mainShield.destroy();
-            if (player.shieldEffect.innerCore) player.shieldEffect.innerCore.destroy();
-            if (player.shieldEffect.outerRing1) player.shieldEffect.outerRing1.destroy();
-            if (player.shieldEffect.outerRing2) player.shieldEffect.outerRing2.destroy();
-            if (player.shieldEffect.particles) {
-                player.shieldEffect.particles.forEach(particle => particle.destroy());
-            }
             player.shieldEffect = null;
         }
         
@@ -1430,6 +1315,50 @@ function updatePlayer(player, data) {
     
     // 데이터 업데이트
     player.data = data;
+    
+    // 강타 스킬 활성화 시 포탄 앞에 강타 발사 대기 표시
+    const hasPowerShot = data.skills && data.skills.powerShot && data.skills.powerShot.isActive;
+    
+    if (hasPowerShot) {
+        if (!player.powerShotIndicator) {
+            // 강타 발사 대기 표시 생성 (간단한 메인 원만)
+            player.powerShotIndicator = {
+                mainCircle: gameScene.add.circle(0, 0, 12, 0xff0000, 0.8)
+            };
+            
+            // 메인 원 설정
+            player.powerShotIndicator.mainCircle.setStrokeStyle(3, 0xffff00, 1);
+            player.powerShotIndicator.mainCircle.setDepth(4);
+            
+            // 간단한 펄스 효과만
+            gameScene.tweens.add({
+                targets: player.powerShotIndicator.mainCircle,
+                scaleX: 1.3,
+                scaleY: 1.3,
+                alpha: 0.5,
+                duration: 800,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+        }
+        
+        // 강타 발사 대기 표시 위치 업데이트 (포탄 끝에서 약간 앞쪽)
+        const indicatorDistance = 45;
+        const indicatorX = player.graphic.x + Math.cos(angle) * indicatorDistance;
+        const indicatorY = player.graphic.y + Math.sin(angle) * indicatorDistance;
+        
+        // 메인 원 위치 업데이트
+        player.powerShotIndicator.mainCircle.x = indicatorX;
+        player.powerShotIndicator.mainCircle.y = indicatorY;
+        
+    } else {
+        // 강타 스킬이 비활성화된 경우 인디케이터 제거
+        if (player.powerShotIndicator) {
+            player.powerShotIndicator.mainCircle.destroy();
+            player.powerShotIndicator = null;
+        }
+    }
 }
 
 function createBullet(data) {
@@ -1559,7 +1488,7 @@ function createBullet(data) {
                 duration: 200 + (index * 50),
                 yoyo: true,
                 repeat: -1,
-                ease: 'Power2'
+                ease: 'Sine.easeInOut'
             });
         });
         

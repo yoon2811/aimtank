@@ -34,8 +34,8 @@ const GAME_CONFIG = {
             COOLDOWN: 60000         // 1분 쿨다운
         },
         POWER_SHOT: {
-            DURATION: 30000,        // 30초 지속 (다음 발사까지)
-            COOLDOWN: 60000,        // 25초 쿨다운
+            DURATION: 10000,        // 10초 지속 (다음 발사까지)
+            COOLDOWN: 60000,        // 1분 쿨다운
             DAMAGE: 100,            // 100 데미지
             SPEED_MULTIPLIER: 3     // 3배 빠른 속도
         },
