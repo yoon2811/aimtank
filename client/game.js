@@ -425,9 +425,22 @@ function updatePlayer(player, data) {
 }
 
 function createBullet(data) {
+    // 총알을 발사한 플레이어의 색상 가져오기
+    let bulletColor = 0xffff00; // 기본 노란색
+    
+    if (data.playerId === socket.id) {
+        // 로컬 플레이어의 총알은 초록색
+        bulletColor = 0x00ff00;
+    } else if (players[data.playerId]) {
+        // 다른 플레이어의 총알은 해당 플레이어의 탱크 색상과 동일
+        const playerColor = usedColors.has(data.playerId) ? 
+            availableColors[usedColors.get(data.playerId)] : 0xffff00;
+        bulletColor = playerColor;
+    }
+    
     const bullet = {
         ...data,
-        graphic: gameScene.add.circle(data.x, data.y, 4, 0xffff00)
+        graphic: gameScene.add.circle(data.x, data.y, 4, bulletColor)
     };
     bullet.graphic.setStrokeStyle(1, 0xffffff);
     bullet.graphic.setDepth(1);
