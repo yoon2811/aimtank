@@ -15,7 +15,21 @@ const GAME_CONFIG = {
     UPDATE_RATE: 60,
     PLAYER_SPEED: 160,
     BULLET_SPEED: 400,
-    BULLET_LIFETIME: 3000
+    BULLET_LIFETIME: 3000,
+    
+    // 스킬 설정 (서버에서 중앙 관리)
+    SKILLS: {
+        RAPID_FIRE: {
+            DURATION: 10000,        // 10초
+            COOLDOWN: 10000,        // 10초
+            FIRE_RATE_MULTIPLIER: 10 // 10배 빠르게
+        },
+        SPEED_BOOST: {
+            DURATION: 10000,        // 10초
+            COOLDOWN: 20000,        // 20초
+            SPEED_MULTIPLIER: 3     // 5배 빠르게
+        }
+    }
 };
 
 // 맵 요소 클래스들
@@ -102,6 +116,7 @@ class Player {
         this.y = GAME_CONFIG.WORLD_HEIGHT / 2;
         this.direction = { x: 0, y: -1 };
         this.movement = { left: false, right: false, up: false, down: false };
+        this.isFiring = false; // 발사 입력 상태
         this.stats = {
             level: 1,
             exp: 0,
@@ -114,21 +129,17 @@ class Player {
         };
         this.lastFired = 0;
         
-        // 스킬 시스템
+        // 스킬 시스템 (서버 설정 사용)
         this.skills = {
             rapidFire: {
                 isActive: false,
                 endTime: 0,
-                cooldownEndTime: 0,
-                duration: 10000, // 10초
-                cooldownTime: 10000 // 10초
+                cooldownEndTime: 0
             },
             speedBoost: {
                 isActive: false,
                 endTime: 0,
-                cooldownEndTime: 0,
-                duration: 10000, // 10초
-                cooldownTime: 20000 // 20초
+                cooldownEndTime: 0
             }
         };
     }
@@ -167,6 +178,57 @@ class Player {
         if (moveX !== 0 || moveY !== 0) {
             this.direction = { x: moveX, y: moveY };
         }
+        
+        // 발사 처리 (서버에서 발사 간격 체크)
+        if (this.isFiring) {
+            this.handleFiring();
+        }
+    }
+    
+    handleFiring() {
+        const now = Date.now();
+        const currentFireRate = this.getCurrentFireRate();
+        
+        if (now - this.lastFired >= currentFireRate) {
+            // 현재 방향으로 총알 생성
+            let direction = { ...this.direction };
+            
+            // 방향이 없는 경우 기본 방향 사용
+            if (direction.x === 0 && direction.y === 0) {
+                direction = { x: 0, y: -1 }; // 기본 방향 (위쪽)
+            }
+            
+            // 방향 벡터 정규화
+            const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
+            if (length > 0) {
+                direction.x /= length;
+                direction.y /= length;
+                
+                // 총알 생성
+                const angle = Math.atan2(direction.y, direction.x);
+                const offsetX = Math.cos(angle) * 30;
+                const offsetY = Math.sin(angle) * 30;
+                
+                const bullet = new Bullet(
+                    this.id,
+                    this.x + offsetX,
+                    this.y + offsetY,
+                    direction,
+                    GAME_CONFIG.BULLET_SPEED,
+                    this.stats.attackPower
+                );
+                
+                gameState.bullets.push(bullet);
+                this.lastFired = now;
+                this.direction = direction;
+                
+                // 발사 이벤트를 해당 플레이어에게 전송 (사운드 재생용)
+                const socket = [...io.sockets.sockets.values()].find(s => s.id === this.id);
+                if (socket) {
+                    socket.emit('fire_sound');
+                }
+            }
+        }
     }
 
     updateSkills() {
@@ -199,16 +261,17 @@ class Player {
 
     activateRapidFireSkill() {
         const now = Date.now();
+        const skillConfig = GAME_CONFIG.SKILLS.RAPID_FIRE;
         
         // 쿨다운 체크
         if (now < this.skills.rapidFire.cooldownEndTime) {
             return false; // 쿨다운 중
         }
         
-        // 스킬 활성화
+        // 스킬 활성화 (서버 설정 사용)
         this.skills.rapidFire.isActive = true;
-        this.skills.rapidFire.endTime = now + this.skills.rapidFire.duration;
-        this.skills.rapidFire.cooldownEndTime = now + this.skills.rapidFire.duration + this.skills.rapidFire.cooldownTime;
+        this.skills.rapidFire.endTime = now + skillConfig.DURATION;
+        this.skills.rapidFire.cooldownEndTime = now + skillConfig.DURATION + skillConfig.COOLDOWN;
         
         console.log(`플레이어 ${this.id}의 연사 스킬 활성화`);
         return true;
@@ -216,29 +279,38 @@ class Player {
 
     activateSpeedBoostSkill() {
         const now = Date.now();
+        const skillConfig = GAME_CONFIG.SKILLS.SPEED_BOOST;
         
         // 쿨다운 체크
         if (now < this.skills.speedBoost.cooldownEndTime) {
             return false; // 쿨다운 중
         }
         
-        // 스킬 활성화
+        // 스킬 활성화 (서버 설정 사용)
         this.skills.speedBoost.isActive = true;
-        this.skills.speedBoost.endTime = now + this.skills.speedBoost.duration;
-        this.skills.speedBoost.cooldownEndTime = now + this.skills.speedBoost.duration + this.skills.speedBoost.cooldownTime;
+        this.skills.speedBoost.endTime = now + skillConfig.DURATION;
+        this.skills.speedBoost.cooldownEndTime = now + skillConfig.DURATION + skillConfig.COOLDOWN;
         
         console.log(`플레이어 ${this.id}의 가속 스킬 활성화`);
         return true;
     }
 
     getCurrentFireRate() {
-        // 연사 스킬이 활성화되면 발사 속도 10배 증가
-        return this.skills.rapidFire.isActive ? this.stats.fireRate / 10 : this.stats.fireRate;
+        // 연사 스킬이 활성화되면 발사 속도 증가 (서버 설정 사용)
+        if (this.skills.rapidFire.isActive) {
+            const multiplier = GAME_CONFIG.SKILLS.RAPID_FIRE.FIRE_RATE_MULTIPLIER;
+            return this.stats.fireRate / multiplier;
+        }
+        return this.stats.fireRate;
     }
 
     getCurrentMoveSpeed() {
-        // 가속 스킬이 활성화되면 이동 속도 5배 증가
-        return this.skills.speedBoost.isActive ? this.stats.moveSpeed * 5 : this.stats.moveSpeed;
+        // 가속 스킬이 활성화되면 이동 속도 증가 (서버 설정 사용)
+        if (this.skills.speedBoost.isActive) {
+            const multiplier = GAME_CONFIG.SKILLS.SPEED_BOOST.SPEED_MULTIPLIER;
+            return this.stats.moveSpeed * multiplier;
+        }
+        return this.stats.moveSpeed;
     }
 
     // 레벨업 아이템 충돌 체크
@@ -429,36 +501,11 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 발사
-    socket.on('fire', (direction) => {
+    // 발사 입력 처리 (클라이언트는 입력 상태만 전달)
+    socket.on('fire_input', (isFiring) => {
         const player = gameState.players[socket.id];
-        if (player && direction && direction.x !== undefined && direction.y !== undefined) {
-            const now = Date.now();
-            const currentFireRate = player.getCurrentFireRate();
-            if (now - player.lastFired >= currentFireRate) {
-                const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
-                const normalizedDirection = {
-                    x: direction.x / length,
-                    y: direction.y / length
-                };
-                
-                const angle = Math.atan2(normalizedDirection.y, normalizedDirection.x);
-                const offsetX = Math.cos(angle) * 30;
-                const offsetY = Math.sin(angle) * 30;
-                
-                const bullet = new Bullet(
-                    socket.id,
-                    player.x + offsetX,
-                    player.y + offsetY,
-                    normalizedDirection,
-                    GAME_CONFIG.BULLET_SPEED,
-                    player.stats.attackPower
-                );
-                
-                gameState.bullets.push(bullet);
-                player.lastFired = now;
-                player.direction = normalizedDirection;
-            }
+        if (player) {
+            player.isFiring = isFiring;
         }
     });
 

@@ -27,7 +27,6 @@ let bullets = new Map();
 let levelUpItems = new Map();
 let mapElements = [];
 let cursors;
-let lastFired = 0;
 let isPaused = false;
 
 // 플레이어 색상 관리
@@ -93,20 +92,16 @@ let minimapTank = null;
 let audioContext;
 let isSoundEnabled = true;
 
-// 스킬 관련
+// 스킬 관련 (클라이언트는 UI 표시용 상태만 저장, 모든 로직은 서버에서 처리)
 let rapidFireSkill = {
     isActive: false,
     cooldownRemaining: 0,
-    duration: 10000, // 10초
-    cooldownTime: 10000, // 10초
-    fireRateMultiplier: 10 // 10배 빠르게
+    duration: 0
 };
 let speedBoostSkill = {
     isActive: false,
     cooldownRemaining: 0,
-    duration: 10000, // 10초
-    cooldownTime: 20000, // 20초
-    speedMultiplier: 5 // 5배 빠르게
+    duration: 0
 };
 let skillKey1;
 let skillKey2;
@@ -198,6 +193,11 @@ function create() {
         }
     });
     
+    // 발사 사운드 이벤트 (서버에서 발사가 실제로 일어났을 때만 재생)
+    socket.on('fire_sound', () => {
+        playFireSound();
+    });
+    
     // 오디오 초기화
     initAudio();
     
@@ -282,7 +282,7 @@ function handleSkillInput() {
 }
 
 function updateSkills(delta) {
-    // 스킬 UI 업데이트 (서버 상태는 game_state에서 동기화됨)
+    // 스킬 UI만 업데이트 (모든 로직은 서버에서 처리됨)
     updateSkillUI();
 }
 
@@ -355,8 +355,8 @@ function updateSkillUI() {
             arrow.setScale(0.8);
         });
         
-        // 쿨다운 진행률 계산 (0~1)
-        const totalCooldown = 20000; // 20초
+        // 쿨다운 진행률 계산 (0~1) - 총 쿨다운 시간은 지속시간 + 쿨다운
+        const totalCooldown = 20000; // 10초 지속 + 10초 쿨다운
         const progress = 1 - (rapidFireSkill.cooldownRemaining / totalCooldown);
         
         // 배경 원 (어두운 회색)
@@ -477,8 +477,8 @@ function updateSkill2UI() {
             lightning.setScale(0.8);
         });
         
-        // 쿨다운 진행률 계산 (0~1)
-        const totalCooldown = 20000; // 20초
+        // 쿨다운 진행률 계산 (0~1) - 총 쿨다운 시간은 지속시간 + 쿨다운
+        const totalCooldown = 30000; // 10초 지속 + 20초 쿨다운
         const progress = 1 - (speedBoostSkill.cooldownRemaining / totalCooldown);
         
         // 배경 원 (어두운 회색)
@@ -538,83 +538,25 @@ function updateSkill2UI() {
 }
 
 function activateRapidFireSkill() {
-    // 쿨다운 중이면 사용 불가
-    if (rapidFireSkill.cooldownRemaining > 0) {
-        console.log(`연사 스킬 쿨다운 중: ${(rapidFireSkill.cooldownRemaining / 1000).toFixed(1)}초 남음`);
-        return;
-    }
-    
-    // 서버에 스킬 사용 요청
+    // 클라이언트는 스킬 사용 요청만 전송 (모든 로직은 서버에서 처리)
     socket.emit('use_skill', 'rapid_fire');
 }
 
 function activateSpeedBoostSkill() {
-    // 쿨다운 중이면 사용 불가
-    if (speedBoostSkill.cooldownRemaining > 0) {
-        console.log(`가속 스킬 쿨다운 중: ${(speedBoostSkill.cooldownRemaining / 1000).toFixed(1)}초 남음`);
-        return;
-    }
-    
-    // 서버에 스킬 사용 요청
+    // 클라이언트는 스킬 사용 요청만 전송 (모든 로직은 서버에서 처리)
     socket.emit('use_skill', 'speed_boost');
 }
 
 
 
 function handleFiring() {
+    // 클라이언트는 단순히 발사 입력을 서버로 전달만 함
     if (gameScene.spaceKey.isDown) {
-        const now = Date.now();
-        // 클라이언트에서는 기본 발사 간격만 체크 (서버에서 실제 스킬 적용)
-        const fireRate = 50; // 빠른 입력 감지를 위해 50ms로 설정
-        
-        if (now - lastFired >= fireRate) {
-            // 로컬 플레이어의 현재 방향 가져오기
-            const localPlayer = players[socket.id];
-            let direction;
-            
-            if (localPlayer && localPlayer.data && localPlayer.data.direction) {
-                // 서버에서 받은 플레이어의 현재 방향 사용
-                direction = { 
-                    x: localPlayer.data.direction.x, 
-                    y: localPlayer.data.direction.y 
-                };
-            } else {
-                // 플레이어 데이터가 없는 경우 현재 이동 입력으로 방향 계산
-                direction = { x: 0, y: -1 }; // 기본 방향 (위쪽)
-                
-                if (movementState.left && movementState.up) {
-                    direction = { x: -1, y: -1 };
-                } else if (movementState.right && movementState.up) {
-                    direction = { x: 1, y: -1 };
-                } else if (movementState.left && movementState.down) {
-                    direction = { x: -1, y: 1 };
-                } else if (movementState.right && movementState.down) {
-                    direction = { x: 1, y: 1 };
-                } else if (movementState.left) {
-                    direction = { x: -1, y: 0 };
-                } else if (movementState.right) {
-                    direction = { x: 1, y: 0 };
-                } else if (movementState.up) {
-                    direction = { x: 0, y: -1 };
-                } else if (movementState.down) {
-                    direction = { x: 0, y: 1 };
-                }
-            }
-            
-            // 방향 벡터 정규화
-            const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
-            if (length > 0) {
-                direction.x /= length;
-                direction.y /= length;
-                
-                // 발사 이벤트 전송
-                socket.emit('fire', direction);
-                lastFired = now;
-                
-                // 발사 효과음 재생
-                playFireSound();
-            }
-        }
+        // 발사 요청만 전송 (모든 로직은 서버에서 처리)
+        socket.emit('fire_input', true);
+    } else {
+        // 발사 중지 요청 전송
+        socket.emit('fire_input', false);
     }
 }
 
@@ -710,12 +652,12 @@ function updateGameState(state) {
         updateUI(localPlayer.stats);
         updateMinimap(localPlayer);
         
-        // 서버의 스킬 상태와 동기화
+        // 서버의 스킬 상태를 클라이언트 UI용으로 동기화 (로직은 서버에서만 처리)
         if (localPlayer.skills && localPlayer.skills.rapidFire) {
             const serverSkill = localPlayer.skills.rapidFire;
             const now = Date.now();
             
-            // 서버 스킬 상태를 클라이언트에 반영
+            // 서버 스킬 상태를 클라이언트 UI에 반영
             rapidFireSkill.isActive = serverSkill.isActive;
             
             if (serverSkill.isActive) {
@@ -727,7 +669,7 @@ function updateGameState(state) {
             rapidFireSkill.cooldownRemaining = Math.max(0, serverSkill.cooldownEndTime - now);
         }
         
-        // 2번 스킬 상태 동기화
+        // 2번 스킬 상태 UI 동기화
         if (localPlayer.skills && localPlayer.skills.speedBoost) {
             const serverSkill = localPlayer.skills.speedBoost;
             const now = Date.now();
