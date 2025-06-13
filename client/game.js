@@ -134,12 +134,17 @@ function preload() {
 function create() {
     gameScene = this;
     
-    // 소켓 연결
-    socket = io('http://localhost:3000');
+    // 소켓 연결 - 로컬 환경 감지
+    const isLocal = window.location.hostname === 'localhost' || 
+                   window.location.hostname === '127.0.0.1' || 
+                   window.location.hostname === '';
+    
+    const serverUrl = isLocal ? 'http://localhost:3000' : 'http://211.45.167.147:3000';
+    socket = io(serverUrl);
     
     // 소켓 이벤트 리스너
     socket.on('connect', () => {
-        console.log('서버에 연결됨');
+        console.log('서버에 연결됨:', serverUrl);
     });
     
     socket.on('map_data', (data) => {
