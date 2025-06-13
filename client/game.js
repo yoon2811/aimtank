@@ -93,6 +93,16 @@ let minimapTank = null;
 let audioContext;
 let isSoundEnabled = true;
 
+// 스킬 관련
+let rapidFireSkill = {
+    isActive: false,
+    cooldownRemaining: 0,
+    duration: 10000, // 10초
+    cooldownTime: 10000, // 10초
+    fireRateMultiplier: 10 // 10배 빠르게
+};
+let skillKey1;
+
 function preload() {
     // 이미지 없이 도형으로만 구현
 }
@@ -150,6 +160,26 @@ function create() {
         }
     });
     
+    // 스킬 결과 처리
+    socket.on('skill_result', (data) => {
+        if (data.skillType === 'rapid_fire') {
+            if (data.success) {
+                console.log('연사 스킬 활성화! 10초 동안 10배 빠른 발사!');
+                playSkillActivationSound();
+            } else {
+                console.log('연사 스킬 쿨다운 중입니다.');
+            }
+        }
+    });
+    
+    // 스킬 비활성화 알림
+    socket.on('skill_deactivated', (data) => {
+        if (data.skillType === 'rapid_fire') {
+            console.log('연사 스킬 종료');
+            playSkillDeactivationSound();
+        }
+    });
+    
     // 오디오 초기화
     initAudio();
     
@@ -161,6 +191,9 @@ function create() {
     
     // 스페이스바 키 추가
     gameScene.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    
+    // 스킬 키 추가
+    skillKey1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
 }
 
 function createMapFromServer(data) {
@@ -201,6 +234,12 @@ function createMapFromServer(data) {
 function update(time, delta) {
     if (isPaused) return;
     
+    // 스킬 업데이트
+    updateSkills(delta);
+    
+    // 스킬 입력 처리
+    handleSkillInput();
+    
     // 이동 입력 처리
     handleMovement();
     
@@ -211,10 +250,58 @@ function update(time, delta) {
     updateRenderables();
 }
 
+function handleSkillInput() {
+    // 숫자 1키 - 연사 스킬
+    if (Phaser.Input.Keyboard.JustDown(skillKey1)) {
+        activateRapidFireSkill();
+    }
+}
+
+function updateSkills(delta) {
+    // 스킬 UI 업데이트 (서버 상태는 game_state에서 동기화됨)
+    updateSkillUI();
+}
+
+function updateSkillUI() {
+    if (!gameScene.skillText) return;
+    
+    if (rapidFireSkill.isActive) {
+        // 스킬 활성화 중
+        const remainingTime = (rapidFireSkill.duration / 1000).toFixed(1);
+        gameScene.skillText.setText(`스킬 [1]: 연사 활성화! (${remainingTime}초)`);
+        gameScene.skillText.setFill('#ffff00'); // 노란색
+    } else if (rapidFireSkill.cooldownRemaining > 0) {
+        // 쿨다운 중
+        const cooldownTime = (rapidFireSkill.cooldownRemaining / 1000).toFixed(1);
+        gameScene.skillText.setText(`스킬 [1]: 연사 (${cooldownTime}초)`);
+        gameScene.skillText.setFill('#ff0000'); // 빨간색
+    } else {
+        // 사용 가능
+        gameScene.skillText.setText('스킬 [1]: 연사 (준비됨)');
+        gameScene.skillText.setFill('#00ff00'); // 초록색
+    }
+}
+
+function activateRapidFireSkill() {
+    // 쿨다운 중이면 사용 불가
+    if (rapidFireSkill.cooldownRemaining > 0) {
+        console.log(`연사 스킬 쿨다운 중: ${(rapidFireSkill.cooldownRemaining / 1000).toFixed(1)}초 남음`);
+        return;
+    }
+    
+    // 서버에 스킬 사용 요청
+    socket.emit('use_skill', 'rapid_fire');
+}
+
+
+
 function handleFiring() {
     if (gameScene.spaceKey.isDown) {
         const now = Date.now();
-        if (now - lastFired >= 1000) {
+        // 클라이언트에서는 기본 발사 간격만 체크 (서버에서 실제 스킬 적용)
+        const fireRate = 50; // 빠른 입력 감지를 위해 50ms로 설정
+        
+        if (now - lastFired >= fireRate) {
             // 로컬 플레이어의 현재 방향 가져오기
             const localPlayer = players[socket.id];
             let direction;
@@ -356,6 +443,23 @@ function updateGameState(state) {
     if (localPlayer) {
         updateUI(localPlayer.stats);
         updateMinimap(localPlayer);
+        
+        // 서버의 스킬 상태와 동기화
+        if (localPlayer.skills && localPlayer.skills.rapidFire) {
+            const serverSkill = localPlayer.skills.rapidFire;
+            const now = Date.now();
+            
+            // 서버 스킬 상태를 클라이언트에 반영
+            rapidFireSkill.isActive = serverSkill.isActive;
+            
+            if (serverSkill.isActive) {
+                rapidFireSkill.duration = Math.max(0, serverSkill.endTime - now);
+            } else {
+                rapidFireSkill.duration = 0;
+            }
+            
+            rapidFireSkill.cooldownRemaining = Math.max(0, serverSkill.cooldownEndTime - now);
+        }
     }
 }
 
@@ -559,11 +663,26 @@ function createUI() {
     gameScene.statsText.setScrollFactor(0);
     gameScene.statsText.setDepth(10);
     
+    // 스킬 UI (좌하단)
+    gameScene.skillText = gameScene.add.text(
+        25,
+        gameConfig.height - 80,
+        '스킬 [1]: 연사 (준비됨)',
+        {
+            fontSize: '14px',
+            fill: '#00ff00',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.skillText.setScrollFactor(0);
+    gameScene.skillText.setDepth(10);
+    
     // 조작법 안내 (우하단)
     const controlsText = gameScene.add.text(
         gameConfig.width - 20,
-        gameConfig.height - 60,
-        '조작법:\n화살표키: 이동\n스페이스: 발사',
+        gameConfig.height - 80,
+        '조작법:\n화살표키: 이동\n스페이스: 발사\n숫자1: 연사 스킬',
         {
             fontSize: '12px',
             fill: '#cccccc',
@@ -943,6 +1062,56 @@ function playHitConfirmSound() {
         oscillator.stop(audioContext.currentTime + 0.15);
     } catch (error) {
         console.log('적중 확인 사운드 재생 오류:', error);
+    }
+}
+
+// 스킬 활성화 사운드
+function playSkillActivationSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.3);
+        
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+        console.log('스킬 활성화 사운드 재생 오류:', error);
+    }
+}
+
+// 스킬 비활성화 사운드
+function playSkillDeactivationSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.2);
+        
+        gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.2);
+    } catch (error) {
+        console.log('스킬 비활성화 사운드 재생 오류:', error);
     }
 }
 

@@ -113,9 +113,23 @@ class Player {
             moveSpeed: GAME_CONFIG.PLAYER_SPEED
         };
         this.lastFired = 0;
+        
+        // 스킬 시스템
+        this.skills = {
+            rapidFire: {
+                isActive: false,
+                endTime: 0,
+                cooldownEndTime: 0,
+                duration: 10000, // 10초
+                cooldownTime: 10000 // 10초
+            }
+        };
     }
 
     update(deltaTime) {
+        // 스킬 업데이트
+        this.updateSkills();
+        
         // 이동 처리
         let moveX = 0;
         let moveY = 0;
@@ -144,6 +158,44 @@ class Player {
         if (moveX !== 0 || moveY !== 0) {
             this.direction = { x: moveX, y: moveY };
         }
+    }
+
+    updateSkills() {
+        const now = Date.now();
+        
+        // 연사 스킬 지속시간 체크
+        if (this.skills.rapidFire.isActive && now >= this.skills.rapidFire.endTime) {
+            this.skills.rapidFire.isActive = false;
+            console.log(`플레이어 ${this.id}의 연사 스킬 종료`);
+            
+            // 해당 플레이어에게 스킬 종료 알림
+            const socket = [...io.sockets.sockets.values()].find(s => s.id === this.id);
+            if (socket) {
+                socket.emit('skill_deactivated', { skillType: 'rapid_fire' });
+            }
+        }
+    }
+
+    activateRapidFireSkill() {
+        const now = Date.now();
+        
+        // 쿨다운 체크
+        if (now < this.skills.rapidFire.cooldownEndTime) {
+            return false; // 쿨다운 중
+        }
+        
+        // 스킬 활성화
+        this.skills.rapidFire.isActive = true;
+        this.skills.rapidFire.endTime = now + this.skills.rapidFire.duration;
+        this.skills.rapidFire.cooldownEndTime = now + this.skills.rapidFire.duration + this.skills.rapidFire.cooldownTime;
+        
+        console.log(`플레이어 ${this.id}의 연사 스킬 활성화`);
+        return true;
+    }
+
+    getCurrentFireRate() {
+        // 연사 스킬이 활성화되면 발사 속도 10배 증가
+        return this.skills.rapidFire.isActive ? this.stats.fireRate / 10 : this.stats.fireRate;
     }
 
     // 레벨업 아이템 충돌 체크
@@ -339,7 +391,8 @@ io.on('connection', (socket) => {
         const player = gameState.players[socket.id];
         if (player && direction && direction.x !== undefined && direction.y !== undefined) {
             const now = Date.now();
-            if (now - player.lastFired >= player.stats.fireRate) {
+            const currentFireRate = player.getCurrentFireRate();
+            if (now - player.lastFired >= currentFireRate) {
                 const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
                 const normalizedDirection = {
                     x: direction.x / length,
@@ -363,6 +416,22 @@ io.on('connection', (socket) => {
                 player.lastFired = now;
                 player.direction = normalizedDirection;
             }
+        }
+    });
+
+    // 스킬 사용
+    socket.on('use_skill', (skillType) => {
+        const player = gameState.players[socket.id];
+        if (!player) return;
+        
+        if (skillType === 'rapid_fire') {
+            const success = player.activateRapidFireSkill();
+            // 클라이언트에 스킬 상태 전송
+            socket.emit('skill_result', {
+                skillType: 'rapid_fire',
+                success: success,
+                skillData: player.skills.rapidFire
+            });
         }
     });
 
@@ -399,9 +468,17 @@ const gameLoop = () => {
         return true; // 총알 유지
     });
 
-    // 게임 상태 브로드캐스트
+    // 게임 상태 브로드캐스트 (스킬 정보 포함)
+    const playersWithSkills = {};
+    Object.entries(gameState.players).forEach(([id, player]) => {
+        playersWithSkills[id] = {
+            ...player,
+            skills: player.skills // 스킬 정보 포함
+        };
+    });
+
     io.emit('game_state', {
-        players: gameState.players,
+        players: playersWithSkills,
         bullets: gameState.bullets,
         levelUpItems: gameState.levelUpItems
     });
