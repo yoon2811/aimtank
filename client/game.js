@@ -82,6 +82,7 @@ let healthBar;
 // 미니맵 관련
 let minimap = null;
 let minimapTank = null;
+let minimapOtherPlayers = {}; // 다른 플레이어들의 미니맵 표시
 
 // 오디오 관련
 let audioContext;
@@ -731,6 +732,13 @@ function updateGameState(state) {
             if (players[id].graphic) players[id].graphic.destroy();
             if (players[id].barrel) players[id].barrel.destroy();
             if (players[id].nameText) players[id].nameText.destroy();
+            
+            // 미니맵에서도 제거
+            if (minimapOtherPlayers[id]) {
+                minimapOtherPlayers[id].destroy();
+                delete minimapOtherPlayers[id];
+            }
+            
             releasePlayerColor(id); // 색상 해제
             delete players[id];
         }
@@ -763,7 +771,7 @@ function updateGameState(state) {
     const localPlayer = state.players[socket.id];
     if (localPlayer) {
         updateUI(localPlayer.stats, localPlayer.pvpStats);
-        updateMinimap(localPlayer);
+        updateMinimap(localPlayer, state.players);
         
         // 서버의 스킬 상태를 클라이언트 UI용으로 동기화 (로직은 서버에서만 처리)
         if (localPlayer.skills && localPlayer.skills.rapidFire) {
@@ -879,6 +887,28 @@ function updatePlayer(player, data) {
     player.barrel.y = player.graphic.y + Math.sin(angle) * 25;
     player.barrel.rotation = angle;
     player.graphic.rotation = angle;
+    
+    // 무적 상태 시각적 표시
+    const now = Date.now();
+    const isInvulnerable = data.invulnerableUntil && now < data.invulnerableUntil;
+    
+    if (isInvulnerable) {
+        // 무적 상태일 때 깜빡임 효과
+        const blinkSpeed = 200; // 200ms마다 깜빡임
+        const shouldShow = Math.floor(now / blinkSpeed) % 2 === 0;
+        player.graphic.setAlpha(shouldShow ? 0.5 : 1);
+        player.barrel.setAlpha(shouldShow ? 0.5 : 1);
+        if (player.nameText) {
+            player.nameText.setAlpha(shouldShow ? 0.5 : 1);
+        }
+    } else {
+        // 정상 상태일 때 완전 불투명
+        player.graphic.setAlpha(1);
+        player.barrel.setAlpha(1);
+        if (player.nameText) {
+            player.nameText.setAlpha(1);
+        }
+    }
     
     // 데이터 업데이트
     player.data = data;
@@ -1596,15 +1626,15 @@ function createMinimap(worldSize) {
     minimapWorld.setScrollFactor(0);
     minimapWorld.setDepth(10);
     
-    // 미니맵 탱크 표시 (빨간 점)
+    // 미니맵 로컬 플레이어 탱크 표시 (초록색 점, 조금 더 크게)
     minimapTank = gameScene.add.circle(
         minimapX + minimapSize / 2, 
         minimapY + minimapSize / 2, 
-        4, 
-        0xff0000
+        5, 
+        0x00ff00
     );
     minimapTank.setScrollFactor(0);
-    minimapTank.setDepth(11);
+    minimapTank.setDepth(12); // 다른 플레이어보다 위에 표시
     
     // 미니맵 정보 저장
     minimap = {
@@ -1615,38 +1645,90 @@ function createMinimap(worldSize) {
         scale: (minimapSize - 10) / Math.max(worldSize.width, worldSize.height)
     };
     
-    // 미니맵 제목
-    const minimapTitle = gameScene.add.text(
-        minimapX + minimapSize / 2,
-        minimapY - 15,
-        'MAP',
-        {
-            fontSize: '12px',
-            fill: '#ffffff',
-            fontFamily: 'Arial',
-            fontStyle: 'bold'
-        }
-    );
-    minimapTitle.setOrigin(0.5);
-    minimapTitle.setScrollFactor(0);
-    minimapTitle.setDepth(10);
+    // // 미니맵 제목
+    // const minimapTitle = gameScene.add.text(
+    //     minimapX + minimapSize / 2,
+    //     minimapY - 15,
+    //     'MINIMAP',
+    //     {
+    //         fontSize: '12px',
+    //         fill: '#ffffff',
+    //         fontFamily: 'Arial',
+    //         fontStyle: 'bold'
+    //     }
+    // );
+    // minimapTitle.setOrigin(0.5);
+    // minimapTitle.setScrollFactor(0);
+    // minimapTitle.setDepth(10);
 }
 
 // 미니맵 업데이트 함수
-function updateMinimap(playerData) {
-    if (!minimap || !minimapTank || !playerData) return;
+function updateMinimap(localPlayerData, allPlayers) {
+    if (!minimap || !minimapTank || !localPlayerData) return;
     
-    // 플레이어 위치를 미니맵 좌표로 변환
-    const minimapPlayerX = minimap.x + 5 + (playerData.x / minimap.worldSize.width) * (minimap.size - 10);
-    const minimapPlayerY = minimap.y + 5 + (playerData.y / minimap.worldSize.height) * (minimap.size - 10);
+    // 로컬 플레이어 위치를 미니맵 좌표로 변환
+    const minimapPlayerX = minimap.x + 5 + (localPlayerData.x / minimap.worldSize.width) * (minimap.size - 10);
+    const minimapPlayerY = minimap.y + 5 + (localPlayerData.y / minimap.worldSize.height) * (minimap.size - 10);
     
-    // 미니맵 탱크 위치 업데이트
+    // 미니맵 로컬 플레이어 탱크 위치 업데이트
     minimapTank.x = minimapPlayerX;
     minimapTank.y = minimapPlayerY;
     
-    // 탱크 방향 표시 (작은 화살표)
-    const angle = Math.atan2(playerData.direction.y, playerData.direction.x);
+    // 로컬 플레이어 탱크 방향 표시
+    const angle = Math.atan2(localPlayerData.direction.y, localPlayerData.direction.x);
     minimapTank.rotation = angle;
+    
+    // 다른 플레이어들 미니맵 업데이트
+    updateMinimapOtherPlayers(allPlayers);
+}
+
+// 다른 플레이어들의 미니맵 표시 업데이트
+function updateMinimapOtherPlayers(allPlayers) {
+    if (!minimap || !allPlayers) return;
+    
+    // 현재 존재하는 미니맵 플레이어들의 ID 목록
+    const currentMinimapPlayerIds = new Set(Object.keys(minimapOtherPlayers));
+    
+    // 모든 플레이어 순회
+    Object.entries(allPlayers).forEach(([playerId, playerData]) => {
+        // 로컬 플레이어는 제외
+        if (playerId === socket.id) return;
+        
+        currentMinimapPlayerIds.delete(playerId);
+        
+        // 플레이어 위치를 미니맵 좌표로 변환
+        const minimapX = minimap.x + 5 + (playerData.x / minimap.worldSize.width) * (minimap.size - 10);
+        const minimapY = minimap.y + 5 + (playerData.y / minimap.worldSize.height) * (minimap.size - 10);
+        
+        // 플레이어 색상 가져오기
+        const playerColor = usedColors.has(playerId) ? 
+            availableColors[usedColors.get(playerId)] : 0xffffff;
+        
+        if (!minimapOtherPlayers[playerId]) {
+            // 새로운 플레이어 미니맵 표시 생성
+            minimapOtherPlayers[playerId] = gameScene.add.circle(
+                minimapX, 
+                minimapY, 
+                3, 
+                playerColor
+            );
+            minimapOtherPlayers[playerId].setScrollFactor(0);
+            minimapOtherPlayers[playerId].setDepth(11);
+        } else {
+            // 기존 플레이어 위치 및 색상 업데이트
+            minimapOtherPlayers[playerId].x = minimapX;
+            minimapOtherPlayers[playerId].y = minimapY;
+            minimapOtherPlayers[playerId].setFillStyle(playerColor);
+        }
+    });
+    
+    // 연결이 끊어진 플레이어들의 미니맵 표시 제거
+    currentMinimapPlayerIds.forEach(playerId => {
+        if (minimapOtherPlayers[playerId]) {
+            minimapOtherPlayers[playerId].destroy();
+            delete minimapOtherPlayers[playerId];
+        }
+    });
 }
 
 // 피격 효과 표시 - 모든 플레이어에게 동일하게 표시

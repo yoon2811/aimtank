@@ -84,8 +84,12 @@ function generateMap() {
 class Player {
     constructor(id) {
         this.id = id;
-        this.x = GAME_CONFIG.WORLD_WIDTH / 2;
-        this.y = GAME_CONFIG.WORLD_HEIGHT / 2;
+        
+        // 랜덤 위치에서 시작 (경계에서 100픽셀 떨어진 곳)
+        const margin = 100;
+        this.x = margin + Math.random() * (GAME_CONFIG.WORLD_WIDTH - 2 * margin);
+        this.y = margin + Math.random() * (GAME_CONFIG.WORLD_HEIGHT - 2 * margin);
+        
         this.direction = { x: 0, y: -1 };
         this.movement = { left: false, right: false, up: false, down: false };
         this.isFiring = false; // 발사 입력 상태
@@ -103,6 +107,9 @@ class Player {
             deaths: 0
         };
         this.lastFired = 0;
+        
+        // 리스폰 무적 시간 (3초)
+        this.invulnerableUntil = 0;
         
         // 스킬 시스템 (서버 설정 사용)
         this.skills = {
@@ -372,6 +379,13 @@ class Player {
     }
 
     takeDamage(damage, attackerId) {
+        // 무적 상태 체크
+        const now = Date.now();
+        if (now < this.invulnerableUntil) {
+            console.log(`플레이어 ${this.id}는 무적 상태입니다. 피해 무시.`);
+            return; // 피해 무시
+        }
+        
         this.stats.health -= damage;
         console.log(`플레이어 ${this.id}가 ${attackerId}에게 ${damage}의 피해를 입었습니다. 남은 체력: ${this.stats.health}`);
         
@@ -414,21 +428,32 @@ class Player {
 
     respawn() {
         // 리스폰 시 체력 회복 및 위치 초기화
-        // 리스폰 시 체력 완전 회복
         this.stats.health = this.stats.maxHealth;
         
-        // 랜덤 위치에 리스폰
-        this.x = GAME_CONFIG.WORLD_WIDTH / 2 + (Math.random() - 0.5) * 200;
-        this.y = GAME_CONFIG.WORLD_HEIGHT / 2 + (Math.random() - 0.5) * 200;
+        // 맵 전체에서 랜덤 위치에 리스폰 (경계에서 50픽셀 떨어진 곳)
+        const margin = 100; // 경계에서 떨어질 거리
+        this.x = margin + Math.random() * (GAME_CONFIG.WORLD_WIDTH - 2 * margin);
+        this.y = margin + Math.random() * (GAME_CONFIG.WORLD_HEIGHT - 2 * margin);
         
-        console.log(`플레이어 ${this.id}가 리스폰했습니다.`);
+        // 기본 방향으로 초기화
+        this.direction = { x: 0, y: -1 };
+        
+        // 모든 이동 상태 초기화
+        this.movement = { left: false, right: false, up: false, down: false };
+        this.isFiring = false;
+        
+        // 리스폰 후 3초간 무적 상태
+        this.invulnerableUntil = Date.now() + 3000;
+        
+        console.log(`플레이어 ${this.id}가 위치 (${Math.round(this.x)}, ${Math.round(this.y)})에서 리스폰했습니다. (3초간 무적)`);
         
         // 모든 플레이어에게 리스폰 이벤트 브로드캐스트
         io.emit('player_respawn_broadcast', {
             playerId: this.id,
             x: this.x,
             y: this.y,
-            health: this.stats.health
+            health: this.stats.health,
+            invulnerableUntil: this.invulnerableUntil
         });
     }
 }
@@ -590,13 +615,14 @@ const gameLoop = () => {
         return true; // 총알 유지
     });
 
-    // 게임 상태 브로드캐스트 (스킬 정보와 PVP 통계 포함)
+    // 게임 상태 브로드캐스트 (스킬 정보, PVP 통계, 무적 상태 포함)
     const playersWithData = {};
     Object.entries(gameState.players).forEach(([id, player]) => {
         playersWithData[id] = {
             ...player,
-            skills: player.skills,     // 스킬 정보 포함
-            pvpStats: player.pvpStats  // PVP 통계 포함
+            skills: player.skills,           // 스킬 정보 포함
+            pvpStats: player.pvpStats,       // PVP 통계 포함
+            invulnerableUntil: player.invulnerableUntil  // 무적 상태 포함
         };
     });
 
