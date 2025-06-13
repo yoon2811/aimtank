@@ -646,26 +646,29 @@ function updateMinimap(playerData) {
 
 // 피격 효과 표시 - 모든 플레이어에게 동일하게 표시
 function showHitDamageEffect(data) {
-    // 피격 위치에 피해량 표시
-    const damageText = gameScene.add.text(data.targetX, data.targetY - 30, `-${data.damage}`, {
-        fontSize: '20px',
-        fill: '#ff4444',
-        fontWeight: 'bold'
-    }).setDepth(600);
+    // 자신이 피격당한 경우가 아닐 때만 피해량 텍스트 표시 (중복 방지)
+    if (data.targetId !== socket.id) {
+        // 피격 위치에 피해량 표시
+        const damageText = gameScene.add.text(data.targetX, data.targetY - 30, `-${data.damage}`, {
+            fontSize: '20px',
+            fill: '#ff4444',
+            fontWeight: 'bold'
+        }).setDepth(600);
+        
+        // 피해량 텍스트 애니메이션
+        gameScene.tweens.add({
+            targets: damageText,
+            y: data.targetY - 60,
+            alpha: 0,
+            duration: 1000,
+            ease: 'Power2',
+            onComplete: () => {
+                damageText.destroy();
+            }
+        });
+    }
     
-    // 피해량 텍스트 애니메이션
-    gameScene.tweens.add({
-        targets: damageText,
-        y: data.targetY - 60,
-        alpha: 0,
-        duration: 1000,
-        ease: 'Power2',
-        onComplete: () => {
-            damageText.destroy();
-        }
-    });
-    
-    // 피격 위치에 빨간 원형 마커
+    // 피격 위치에 빨간 원형 마커 (모든 플레이어에게 표시)
     const hitMarker = gameScene.add.circle(data.targetX, data.targetY, 15, 0xff0000, 0.7);
     hitMarker.setDepth(500);
     
