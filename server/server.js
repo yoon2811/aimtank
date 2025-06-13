@@ -22,11 +22,11 @@ const GAME_CONFIG = {
         RAPID_FIRE: {
             DURATION: 10000,        // 10초
             COOLDOWN: 10000,        // 10초
-            FIRE_RATE_MULTIPLIER: 5 // 5배 빠르게 (1000ms → 200ms)
+            FIRE_RATE_MULTIPLIER: 7 // 7배 빠르게
         },
         SPEED_BOOST: {
             DURATION: 10000,        // 10초
-            COOLDOWN: 20000,        // 20초
+            COOLDOWN: 10000,        // 10초
             SPEED_MULTIPLIER: 3     // 3배 빠르게
         }
     }
@@ -175,17 +175,42 @@ class Player {
                 direction.x /= length;
                 direction.y /= length;
                 
-                // 총알 생성
+                // 총알 생성 (플레이어 이동 벡터 추가)
                 const angle = Math.atan2(direction.y, direction.x);
                 const offsetX = Math.cos(angle) * 30;
                 const offsetY = Math.sin(angle) * 30;
+                
+                // 플레이어의 현재 이동 벡터 계산
+                let playerVelocityX = 0;
+                let playerVelocityY = 0;
+                
+                if (this.movement.left || this.movement.right || this.movement.up || this.movement.down) {
+                    const currentMoveSpeed = this.getCurrentMoveSpeed();
+                    
+                    if (this.movement.left) playerVelocityX -= currentMoveSpeed;
+                    if (this.movement.right) playerVelocityX += currentMoveSpeed;
+                    if (this.movement.up) playerVelocityY -= currentMoveSpeed;
+                    if (this.movement.down) playerVelocityY += currentMoveSpeed;
+                    
+                    // 대각선 이동 정규화
+                    if (playerVelocityX !== 0 && playerVelocityY !== 0) {
+                        const diagonalFactor = 1 / Math.sqrt(2);
+                        playerVelocityX *= diagonalFactor;
+                        playerVelocityY *= diagonalFactor;
+                    }
+                }
+                
+                // 총알 속도 = 기본 속도 + 플레이어 이동 속도의 일부
+                const velocityBonus = 0.5; // 플레이어 속도의 50%만 추가
+                const bulletSpeed = GAME_CONFIG.BULLET_SPEED + 
+                    Math.sqrt(playerVelocityX * playerVelocityX + playerVelocityY * playerVelocityY) * velocityBonus;
                 
                 const bullet = new Bullet(
                     this.id,
                     this.x + offsetX,
                     this.y + offsetY,
                     direction,
-                    GAME_CONFIG.BULLET_SPEED,
+                    bulletSpeed,
                     this.stats.attackPower
                 );
                 
