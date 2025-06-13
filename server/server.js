@@ -32,6 +32,15 @@ const GAME_CONFIG = {
         HEAL: {
             HEAL_AMOUNT: 30,        // 30 체력 회복
             COOLDOWN: 60000         // 1분 쿨다운
+        },
+        POWER_SHOT: {
+            DURATION: 30000,        // 30초 지속 (다음 발사까지)
+            COOLDOWN: 60000,        // 25초 쿨다운
+            DAMAGE: 100             // 100 데미지
+        },
+        SHIELD: {
+            DURATION: 3000,         // 3초 지속
+            COOLDOWN: 60000         // 1분 쿨다운
         }
     }
 };
@@ -84,6 +93,7 @@ function generateMap() {
 class Player {
     constructor(id) {
         this.id = id;
+        this.name = `플레이어${id.substring(0, 4)}`; // 플레이어명 추가 (ID 앞 4자리 사용)
         
         // 랜덤 위치에서 시작 (경계에서 100픽셀 떨어진 곳)
         const margin = 100;
@@ -124,6 +134,16 @@ class Player {
                 cooldownEndTime: 0
             },
             heal: {
+                isActive: false,
+                endTime: 0,
+                cooldownEndTime: 0
+            },
+            powerShot: {
+                isActive: false,
+                endTime: 0,
+                cooldownEndTime: 0
+            },
+            shield: {
                 isActive: false,
                 endTime: 0,
                 cooldownEndTime: 0
@@ -221,13 +241,31 @@ class Player {
                 const bulletSpeed = GAME_CONFIG.BULLET_SPEED + 
                     Math.sqrt(playerVelocityX * playerVelocityX + playerVelocityY * playerVelocityY) * velocityBonus;
                 
+                // 강력한 공격 스킬이 활성화된 경우 데미지 증가
+                let bulletDamage = this.stats.attackPower;
+                let isPowerShot = false;
+                if (this.skills.powerShot.isActive) {
+                    bulletDamage = GAME_CONFIG.SKILLS.POWER_SHOT.DAMAGE;
+                    isPowerShot = true;
+                    // 스킬 사용 후 즉시 비활성화 (한 발만 강력한 공격)
+                    this.skills.powerShot.isActive = false;
+                    console.log(`플레이어 ${this.id}의 강력한 공격 스킬 사용! 데미지: ${bulletDamage}`);
+                    
+                    // 해당 플레이어에게 스킬 종료 알림
+                    const socket = [...io.sockets.sockets.values()].find(s => s.id === this.id);
+                    if (socket) {
+                        socket.emit('skill_deactivated', { skillType: 'power_shot' });
+                    }
+                }
+                
                 const bullet = new Bullet(
                     this.id,
                     this.x + offsetX,
                     this.y + offsetY,
                     direction,
                     bulletSpeed,
-                    this.stats.attackPower
+                    bulletDamage,
+                    isPowerShot
                 );
                 
                 gameState.bullets.push(bullet);
@@ -267,6 +305,30 @@ class Player {
             const socket = [...io.sockets.sockets.values()].find(s => s.id === this.id);
             if (socket) {
                 socket.emit('skill_deactivated', { skillType: 'speed_boost' });
+            }
+        }
+        
+        // 강력한 공격 스킬 지속시간 체크
+        if (this.skills.powerShot.isActive && now >= this.skills.powerShot.endTime) {
+            this.skills.powerShot.isActive = false;
+            console.log(`플레이어 ${this.id}의 강력한 공격 스킬 종료`);
+            
+            // 해당 플레이어에게 스킬 종료 알림
+            const socket = [...io.sockets.sockets.values()].find(s => s.id === this.id);
+            if (socket) {
+                socket.emit('skill_deactivated', { skillType: 'power_shot' });
+            }
+        }
+        
+        // 방어막 스킬 지속시간 체크
+        if (this.skills.shield.isActive && now >= this.skills.shield.endTime) {
+            this.skills.shield.isActive = false;
+            console.log(`플레이어 ${this.id}의 방어막 스킬 종료`);
+            
+            // 해당 플레이어에게 스킬 종료 알림
+            const socket = [...io.sockets.sockets.values()].find(s => s.id === this.id);
+            if (socket) {
+                socket.emit('skill_deactivated', { skillType: 'shield' });
             }
         }
     }
@@ -349,6 +411,42 @@ class Player {
         return true;
     }
 
+    activatePowerShotSkill() {
+        const now = Date.now();
+        const skillConfig = GAME_CONFIG.SKILLS.POWER_SHOT;
+        
+        // 쿨다운 체크
+        if (now < this.skills.powerShot.cooldownEndTime) {
+            return false; // 쿨다운 중
+        }
+        
+        // 스킬 활성화 (서버 설정 사용)
+        this.skills.powerShot.isActive = true;
+        this.skills.powerShot.endTime = now + skillConfig.DURATION;
+        this.skills.powerShot.cooldownEndTime = now + skillConfig.COOLDOWN;
+        
+        console.log(`플레이어 ${this.id}의 강력한 공격 스킬 활성화`);
+        return true;
+    }
+
+    activateShieldSkill() {
+        const now = Date.now();
+        const skillConfig = GAME_CONFIG.SKILLS.SHIELD;
+        
+        // 쿨다운 체크
+        if (now < this.skills.shield.cooldownEndTime) {
+            return false; // 쿨다운 중
+        }
+        
+        // 스킬 활성화 (서버 설정 사용)
+        this.skills.shield.isActive = true;
+        this.skills.shield.endTime = now + skillConfig.DURATION;
+        this.skills.shield.cooldownEndTime = now + skillConfig.COOLDOWN;
+        
+        console.log(`플레이어 ${this.id}의 방어막 스킬 활성화 (3초간 무적)`);
+        return true;
+    }
+
     getCurrentFireRate() {
         // 연사 스킬이 활성화되면 발사 속도 증가 (서버 설정 사용)
         if (this.skills.rapidFire.isActive) {
@@ -379,10 +477,26 @@ class Player {
     }
 
     takeDamage(damage, attackerId) {
-        // 무적 상태 체크
+        // 무적 상태 체크 (리스폰 무적)
         const now = Date.now();
         if (now < this.invulnerableUntil) {
-            console.log(`플레이어 ${this.id}는 무적 상태입니다. 피해 무시.`);
+            console.log(`플레이어 ${this.id}는 리스폰 무적 상태입니다. 피해 무시.`);
+            return; // 피해 무시
+        }
+        
+        // 방어막 스킬 무적 상태 체크
+        if (this.skills.shield.isActive) {
+            console.log(`플레이어 ${this.id}는 방어막 스킬로 무적 상태입니다. 피해 무시.`);
+            
+            // 방어막 피격 이벤트 브로드캐스트 (시각적 효과용)
+            io.emit('shield_hit_broadcast', {
+                playerId: this.id,
+                x: this.x,
+                y: this.y,
+                attackerId: attackerId,
+                damage: damage
+            });
+            
             return; // 피해 무시
         }
         
@@ -460,7 +574,7 @@ class Player {
 
 // 총알 클래스
 class Bullet {
-    constructor(playerId, x, y, direction, speed, damage) {
+    constructor(playerId, x, y, direction, speed, damage, isPowerShot = false) {
         this.id = Date.now() + Math.random();
         this.playerId = playerId;
         this.x = x;
@@ -468,6 +582,7 @@ class Bullet {
         this.direction = direction;
         this.speed = speed;
         this.damage = damage;
+        this.isPowerShot = isPowerShot;
         this.createdAt = Date.now();
     }
 
@@ -580,7 +695,43 @@ io.on('connection', (socket) => {
                 success: success,
                 skillData: player.skills.heal
             });
+        } else if (skillType === 'power_shot') {
+            const success = player.activatePowerShotSkill();
+            // 클라이언트에 스킬 상태 전송
+            socket.emit('skill_result', {
+                skillType: 'power_shot',
+                success: success,
+                skillData: player.skills.powerShot
+            });
+        } else if (skillType === 'shield') {
+            const success = player.activateShieldSkill();
+            // 클라이언트에 스킬 상태 전송
+            socket.emit('skill_result', {
+                skillType: 'shield',
+                success: success,
+                skillData: player.skills.shield
+            });
         }
+    });
+
+    // 채팅 메시지 처리
+    socket.on('chat_message', (data) => {
+        const player = gameState.players[socket.id];
+        if (!player || !data.message) return;
+        
+        // 메시지 길이 제한 (최대 100자)
+        const message = data.message.substring(0, 100);
+        
+        // 욕설 필터링 (간단한 예시)
+        const filteredMessage = message.replace(/[욕설|비속어|fuck|shit]/gi, '***');
+        
+        console.log(`채팅 메시지 - ${player.name}: ${filteredMessage}`);
+        
+        // 모든 플레이어에게 채팅 메시지 브로드캐스트 (플레이어 ID 포함)
+        io.emit('chat_message', {
+            playerId: socket.id,
+            message: filteredMessage
+        });
     });
 
     // 연결 해제

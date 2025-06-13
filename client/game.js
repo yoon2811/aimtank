@@ -104,9 +104,29 @@ let healSkill = {
     cooldownRemaining: 0,
     duration: 0
 };
+let powerShotSkill = {
+    isActive: false,
+    cooldownRemaining: 0,
+    duration: 0
+};
+let shieldSkill = {
+    isActive: false,
+    cooldownRemaining: 0,
+    duration: 0
+};
 let skillKey1;
 let skillKey2;
 let skillKey3;
+let skillKey4;
+let skillKey5;
+
+// 채팅 관련 변수
+let chatMessages = [];
+let chatInputActive = false;
+let chatInputText = '';
+let chatCollapsed = false; // 채팅창 접힘 상태
+let enterKey;
+let enterKeyBlocked = false; // Enter 키 일시 차단용
 
 function preload() {
     // 이미지 없이 도형으로만 구현
@@ -188,6 +208,20 @@ function create() {
             } else {
                 console.log('회복 스킬 쿨다운 중입니다.');
             }
+        } else if (data.skillType === 'power_shot') {
+            if (data.success) {
+                console.log('강력한 공격 스킬 활성화! 다음 발사가 100 데미지!');
+                playPowerShotActivationSound();
+            } else {
+                console.log('강력한 공격 스킬 쿨다운 중입니다.');
+            }
+        } else if (data.skillType === 'shield') {
+            if (data.success) {
+                console.log('방어막 스킬 활성화! 3초간 무적!');
+                playShieldActivationSound();
+            } else {
+                console.log('방어막 스킬 쿨다운 중입니다.');
+            }
         }
     });
     
@@ -202,6 +236,12 @@ function create() {
         } else if (data.skillType === 'heal') {
             console.log('회복 스킬 종료');
             playSkillDeactivationSound();
+        } else if (data.skillType === 'power_shot') {
+            console.log('강력한 공격 스킬 종료');
+            playSkillDeactivationSound();
+        } else if (data.skillType === 'shield') {
+            console.log('방어막 스킬 종료');
+            playShieldDeactivationSound();
         }
     });
     
@@ -213,6 +253,11 @@ function create() {
     // 회복 효과 이벤트
     socket.on('heal_effect', (data) => {
         showHealEffect(data);
+    });
+    
+    // 채팅 메시지 수신
+    socket.on('chat_message', (data) => {
+        addChatMessage(data.playerId, data.message);
     });
     
     // 오디오 초기화
@@ -234,6 +279,11 @@ function create() {
     skillKey1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
     skillKey2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
     skillKey3 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
+    skillKey4 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR);
+    skillKey5 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE);
+    
+    // 채팅 키 추가
+    enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
 }
 
 function createMapFromServer(data) {
@@ -280,6 +330,9 @@ function update(time, delta) {
     // 스킬 입력 처리
     handleSkillInput();
     
+    // 채팅 입력 처리
+    handleChatInput();
+    
     // 이동 입력 처리
     handleMovement();
     
@@ -291,6 +344,9 @@ function update(time, delta) {
 }
 
 function handleSkillInput() {
+    // 채팅 입력 중일 때는 스킬 사용 비활성화 (숫자키는 채팅에서 사용)
+    if (chatInputActive) return;
+    
     // 숫자 1키 - 연사 스킬
     if (Phaser.Input.Keyboard.JustDown(skillKey1)) {
         activateRapidFireSkill();
@@ -304,6 +360,16 @@ function handleSkillInput() {
     // 숫자 3키 - 회복 스킬
     if (Phaser.Input.Keyboard.JustDown(skillKey3)) {
         activateHealSkill();
+    }
+    
+    // 숫자 4키 - 강력한 공격 스킬
+    if (Phaser.Input.Keyboard.JustDown(skillKey4)) {
+        activatePowerShotSkill();
+    }
+    
+    // 숫자 5키 - 방어막 스킬
+    if (Phaser.Input.Keyboard.JustDown(skillKey5)) {
+        activateShieldSkill();
     }
 }
 
@@ -437,6 +503,12 @@ function updateSkillUI() {
     
     // === 3번 스킬 UI 업데이트 ===
     updateSkill3UI();
+    
+    // === 4번 스킬 UI 업데이트 ===
+    updateSkill4UI();
+    
+    // === 5번 스킬 UI 업데이트 ===
+    updateSkill5UI();
 }
 
 function updateSkill2UI() {
@@ -666,6 +738,238 @@ function updateSkill3UI() {
     }
 }
 
+function updateSkill4UI() {
+    if (!gameScene.skill4IconPos) return;
+    
+    const pos = gameScene.skill4IconPos;
+    
+    // 4번 스킬 그래픽 초기화
+    if (gameScene.skill4CooldownCircle) {
+        gameScene.skill4CooldownCircle.clear();
+    }
+    
+    if (powerShotSkill.isActive) {
+        // 스킬 활성화 중 - 빨간색 배경과 남은 시간 표시
+        
+        // 아이콘 배경을 밝은 빨간색으로
+        gameScene.skill4IconBg.setFillStyle(0x330000);
+        gameScene.skill4IconBg.setStrokeStyle(3, 0xff0000);
+        
+        // 스킬명 색상 변경
+        gameScene.skill4NameInBox.setFill('#ff0000');
+        
+        // 남은 시간 표시
+        const remainingTime = Math.ceil(powerShotSkill.duration / 1000);
+        gameScene.skill4TimeText.setText(remainingTime.toString());
+        gameScene.skill4TimeText.setFill('#ff0000');
+        gameScene.skill4TimeText.setVisible(true);
+        
+        // 스킬명을 빠르게 깜빡이게 (강력한 공격 효과)
+        gameScene.tweens.killTweensOf(gameScene.skill4NameInBox);
+        gameScene.tweens.add({
+            targets: gameScene.skill4NameInBox,
+            alpha: 0.3,
+            scaleX: 1.3,
+            scaleY: 1.3,
+            duration: 150,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Power2'
+        });
+        
+    } else if (powerShotSkill.cooldownRemaining > 0) {
+        // 쿨다운 중 - 회색 배경과 쿨다운 시간 표시
+        
+        // 아이콘 배경을 어둡게
+        gameScene.skill4IconBg.setFillStyle(0x222222);
+        gameScene.skill4IconBg.setStrokeStyle(2, 0x555555);
+        
+        // 스킬명 색상 변경
+        gameScene.skill4NameInBox.setFill('#888888');
+        
+        // 쿨다운 시간 표시
+        const cooldownTime = Math.ceil(powerShotSkill.cooldownRemaining / 1000);
+        gameScene.skill4TimeText.setText(cooldownTime.toString());
+        gameScene.skill4TimeText.setFill('#ff0000');
+        gameScene.skill4TimeText.setVisible(true);
+        
+        // 스킬명을 어둡고 작게
+        gameScene.tweens.killTweensOf(gameScene.skill4NameInBox);
+        gameScene.skill4NameInBox.setAlpha(0.3);
+        gameScene.skill4NameInBox.setScale(0.8);
+        
+        // 쿨다운 진행률 계산 (0~1) - 총 쿨다운 시간은 25초
+        const totalCooldown = 25000; // 25초 쿨다운
+        const progress = 1 - (powerShotSkill.cooldownRemaining / totalCooldown);
+        
+        // 배경 원 (어두운 회색)
+        gameScene.skill4CooldownCircle.fillStyle(0x000000, 0.6);
+        gameScene.skill4CooldownCircle.fillCircle(pos.x, pos.y, pos.size/2 - 2);
+        
+        // 진행률 원호 (빨간색에서 주황색으로 변화)
+        const startAngle = -Math.PI / 2; // 12시 방향부터 시작
+        const endAngle = startAngle + (progress * Math.PI * 2);
+        
+        // 진행률에 따른 색상 변화 (빨간색 -> 주황색 -> 노란색)
+        let color = 0xff0000; // 빨간색
+        if (progress > 0.5) {
+            color = 0xff8800; // 주황색
+        }
+        if (progress > 0.8) {
+            color = 0xffaa00; // 노란색
+        }
+        
+        gameScene.skill4CooldownCircle.lineStyle(3, color, 0.7);
+        gameScene.skill4CooldownCircle.beginPath();
+        gameScene.skill4CooldownCircle.arc(pos.x, pos.y, pos.size/2 - 4, startAngle, endAngle);
+        gameScene.skill4CooldownCircle.strokePath();
+        
+    } else {
+        // 사용 가능 - 빨간색 배경과 준비 상태
+        
+        // 아이콘 배경을 정상으로
+        gameScene.skill4IconBg.setFillStyle(0x331100);
+        gameScene.skill4IconBg.setStrokeStyle(3, 0xff4400);
+        
+        // 스킬명 색상 변경
+        gameScene.skill4NameInBox.setFill('#ff4400');
+        
+        // 시간 텍스트 숨김
+        gameScene.skill4TimeText.setVisible(false);
+        
+        // 스킬명을 정상 상태로
+        gameScene.tweens.killTweensOf(gameScene.skill4NameInBox);
+        gameScene.skill4NameInBox.setAlpha(1);
+        gameScene.skill4NameInBox.setScale(1);
+        
+        // 스킬명에 미묘한 반짝임
+        gameScene.tweens.add({
+            targets: gameScene.skill4NameInBox,
+            alpha: 0.7,
+            duration: 2200,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+    }
+}
+
+function updateSkill5UI() {
+    if (!gameScene.skill5IconPos) return;
+    
+    const pos = gameScene.skill5IconPos;
+    
+    // 5번 스킬 그래픽 초기화
+    if (gameScene.skill5CooldownCircle) {
+        gameScene.skill5CooldownCircle.clear();
+    }
+    
+    if (shieldSkill.isActive) {
+        // 스킬 활성화 중 - 파란색 배경과 남은 시간 표시
+        
+        // 아이콘 배경을 밝은 파란색으로
+        gameScene.skill5IconBg.setFillStyle(0x003366);
+        gameScene.skill5IconBg.setStrokeStyle(3, 0x00aaff);
+        
+        // 스킬명 색상 변경
+        gameScene.skill5NameInBox.setFill('#00aaff');
+        
+        // 남은 시간 표시
+        const remainingTime = Math.ceil(shieldSkill.duration / 1000);
+        gameScene.skill5TimeText.setText(remainingTime.toString());
+        gameScene.skill5TimeText.setFill('#00aaff');
+        gameScene.skill5TimeText.setVisible(true);
+        
+        // 스킬명을 빠르게 깜빡이게 (방어막 효과)
+        gameScene.tweens.killTweensOf(gameScene.skill5NameInBox);
+        gameScene.tweens.add({
+            targets: gameScene.skill5NameInBox,
+            alpha: 0.3,
+            scaleX: 1.3,
+            scaleY: 1.3,
+            duration: 100,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Power2'
+        });
+        
+    } else if (shieldSkill.cooldownRemaining > 0) {
+        // 쿨다운 중 - 회색 배경과 쿨다운 시간 표시
+        
+        // 아이콘 배경을 어둡게
+        gameScene.skill5IconBg.setFillStyle(0x222222);
+        gameScene.skill5IconBg.setStrokeStyle(2, 0x555555);
+        
+        // 스킬명 색상 변경
+        gameScene.skill5NameInBox.setFill('#888888');
+        
+        // 쿨다운 시간 표시
+        const cooldownTime = Math.ceil(shieldSkill.cooldownRemaining / 1000);
+        gameScene.skill5TimeText.setText(cooldownTime.toString());
+        gameScene.skill5TimeText.setFill('#ff0000');
+        gameScene.skill5TimeText.setVisible(true);
+        
+        // 스킬명을 어둡고 작게
+        gameScene.tweens.killTweensOf(gameScene.skill5NameInBox);
+        gameScene.skill5NameInBox.setAlpha(0.3);
+        gameScene.skill5NameInBox.setScale(0.8);
+        
+                 // 쿨다운 진행률 계산 (0~1) - 총 쿨다운 시간은 1분
+         const totalCooldown = 60000; // 1분 쿨다운
+         const progress = 1 - (shieldSkill.cooldownRemaining / totalCooldown);
+        
+        // 배경 원 (어두운 회색)
+        gameScene.skill5CooldownCircle.fillStyle(0x000000, 0.6);
+        gameScene.skill5CooldownCircle.fillCircle(pos.x, pos.y, pos.size/2 - 2);
+        
+        // 진행률 원호 (빨간색에서 파란색으로 변화)
+        const startAngle = -Math.PI / 2; // 12시 방향부터 시작
+        const endAngle = startAngle + (progress * Math.PI * 2);
+        
+        // 진행률에 따른 색상 변화 (빨간색 -> 보라색 -> 파란색)
+        let color = 0xff0000; // 빨간색
+        if (progress > 0.5) {
+            color = 0x8800ff; // 보라색
+        }
+        if (progress > 0.8) {
+            color = 0x00aaff; // 파란색
+        }
+        
+        gameScene.skill5CooldownCircle.lineStyle(3, color, 0.7);
+        gameScene.skill5CooldownCircle.beginPath();
+        gameScene.skill5CooldownCircle.arc(pos.x, pos.y, pos.size/2 - 4, startAngle, endAngle);
+        gameScene.skill5CooldownCircle.strokePath();
+        
+    } else {
+        // 사용 가능 - 파란색 배경과 준비 상태
+        
+        // 아이콘 배경을 정상으로
+        gameScene.skill5IconBg.setFillStyle(0x001133);
+        gameScene.skill5IconBg.setStrokeStyle(3, 0x00aaff);
+        
+        // 스킬명 색상 변경
+        gameScene.skill5NameInBox.setFill('#00aaff');
+        
+        // 시간 텍스트 숨김
+        gameScene.skill5TimeText.setVisible(false);
+        
+        // 스킬명을 정상 상태로
+        gameScene.tweens.killTweensOf(gameScene.skill5NameInBox);
+        gameScene.skill5NameInBox.setAlpha(1);
+        gameScene.skill5NameInBox.setScale(1);
+        
+        // 스킬명에 미묘한 반짝임
+        gameScene.tweens.add({
+            targets: gameScene.skill5NameInBox,
+            alpha: 0.7,
+            duration: 1800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+    }
+}
+
 function activateRapidFireSkill() {
     // 클라이언트는 스킬 사용 요청만 전송 (모든 로직은 서버에서 처리)
     socket.emit('use_skill', 'rapid_fire');
@@ -681,9 +985,25 @@ function activateHealSkill() {
     socket.emit('use_skill', 'heal');
 }
 
+function activatePowerShotSkill() {
+    // 클라이언트는 스킬 사용 요청만 전송 (모든 로직은 서버에서 처리)
+    socket.emit('use_skill', 'power_shot');
+}
+
+function activateShieldSkill() {
+    // 클라이언트는 스킬 사용 요청만 전송 (모든 로직은 서버에서 처리)
+    socket.emit('use_skill', 'shield');
+}
+
 
 
 function handleFiring() {
+    // 채팅 입력 중일 때는 발사 비활성화
+    if (chatInputActive) {
+        socket.emit('fire_input', false);
+        return;
+    }
+    
     // 클라이언트는 단순히 발사 입력을 서버로 전달만 함
     if (gameScene.spaceKey.isDown) {
         // 발사 요청만 전송 (모든 로직은 서버에서 처리)
@@ -695,6 +1015,19 @@ function handleFiring() {
 }
 
 function handleMovement() {
+    // 채팅 입력 중일 때는 이동 비활성화
+    if (chatInputActive) {
+        // 채팅 입력 중이면 모든 이동을 중지
+        const stopState = { left: false, right: false, up: false, down: false };
+        Object.keys(stopState).forEach(direction => {
+            if (movementState[direction]) {
+                socket.emit('move_stop', direction);
+                movementState[direction] = false;
+            }
+        });
+        return;
+    }
+    
     // 이전 상태와 비교하여 변경된 경우만 전송
     const newState = {
         left: cursors.left.isDown || gameScene.wasdKeys.A.isDown,
@@ -732,6 +1065,7 @@ function updateGameState(state) {
             if (players[id].graphic) players[id].graphic.destroy();
             if (players[id].barrel) players[id].barrel.destroy();
             if (players[id].nameText) players[id].nameText.destroy();
+            if (players[id].shieldEffect) players[id].shieldEffect.destroy(); // 방어막 효과 제거
             
             // 미니맵에서도 제거
             if (minimapOtherPlayers[id]) {
@@ -760,11 +1094,7 @@ function updateGameState(state) {
     
     // 서버에서 사라진 총알들 제거
     currentBulletIds.forEach(id => {
-        const bullet = bullets.get(id);
-        if (bullet && bullet.graphic) {
-            bullet.graphic.destroy();
-        }
-        bullets.delete(id);
+        removeBullet(id);
     });
     
         // 로컬 플레이어 UI 업데이트
@@ -820,6 +1150,38 @@ function updateGameState(state) {
             }
             
             healSkill.cooldownRemaining = Math.max(0, serverSkill.cooldownEndTime - now);
+        }
+        
+        // 4번 스킬 상태 UI 동기화
+        if (localPlayer.skills && localPlayer.skills.powerShot) {
+            const serverSkill = localPlayer.skills.powerShot;
+            const now = Date.now();
+            
+            powerShotSkill.isActive = serverSkill.isActive;
+            
+            if (serverSkill.isActive) {
+                powerShotSkill.duration = Math.max(0, serverSkill.endTime - now);
+            } else {
+                powerShotSkill.duration = 0;
+            }
+            
+            powerShotSkill.cooldownRemaining = Math.max(0, serverSkill.cooldownEndTime - now);
+        }
+        
+        // 5번 스킬 상태 UI 동기화
+        if (localPlayer.skills && localPlayer.skills.shield) {
+            const serverSkill = localPlayer.skills.shield;
+            const now = Date.now();
+            
+            shieldSkill.isActive = serverSkill.isActive;
+            
+            if (serverSkill.isActive) {
+                shieldSkill.duration = Math.max(0, serverSkill.endTime - now);
+            } else {
+                shieldSkill.duration = 0;
+            }
+            
+            shieldSkill.cooldownRemaining = Math.max(0, serverSkill.cooldownEndTime - now);
         }
     }
     
@@ -891,9 +1253,10 @@ function updatePlayer(player, data) {
     // 무적 상태 시각적 표시
     const now = Date.now();
     const isInvulnerable = data.invulnerableUntil && now < data.invulnerableUntil;
+    const hasShield = data.skills && data.skills.shield && data.skills.shield.isActive;
     
     if (isInvulnerable) {
-        // 무적 상태일 때 깜빡임 효과
+        // 리스폰 무적 상태일 때 깜빡임 효과
         const blinkSpeed = 200; // 200ms마다 깜빡임
         const shouldShow = Math.floor(now / blinkSpeed) % 2 === 0;
         player.graphic.setAlpha(shouldShow ? 0.5 : 1);
@@ -901,7 +1264,44 @@ function updatePlayer(player, data) {
         if (player.nameText) {
             player.nameText.setAlpha(shouldShow ? 0.5 : 1);
         }
+    } else if (hasShield) {
+        // 방어막 스킬 활성화 시 파란색 오라 효과
+        if (!player.shieldEffect) {
+            // 방어막 오라 생성
+            player.shieldEffect = gameScene.add.circle(player.graphic.x, player.graphic.y, 30, 0x00aaff, 0.3);
+            player.shieldEffect.setStrokeStyle(3, 0x00ffff, 0.8);
+            player.shieldEffect.setDepth(1);
+            
+            // 방어막 오라 애니메이션
+            gameScene.tweens.add({
+                targets: player.shieldEffect,
+                scaleX: 1.2,
+                scaleY: 1.2,
+                alpha: 0.1,
+                duration: 500,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+        } else {
+            // 방어막 오라 위치 업데이트
+            player.shieldEffect.x = player.graphic.x;
+            player.shieldEffect.y = player.graphic.y;
+        }
+        
+        // 플레이어 정상 투명도
+        player.graphic.setAlpha(1);
+        player.barrel.setAlpha(1);
+        if (player.nameText) {
+            player.nameText.setAlpha(1);
+        }
     } else {
+        // 방어막 효과 제거
+        if (player.shieldEffect) {
+            player.shieldEffect.destroy();
+            player.shieldEffect = null;
+        }
+        
         // 정상 상태일 때 완전 불투명
         player.graphic.setAlpha(1);
         player.barrel.setAlpha(1);
@@ -928,14 +1328,159 @@ function createBullet(data) {
         bulletColor = playerColor;
     }
     
-    const bullet = {
-        ...data,
-        graphic: gameScene.add.circle(data.x, data.y, 4, bulletColor)
-    };
-    bullet.graphic.setStrokeStyle(1, 0xffffff);
-    bullet.graphic.setDepth(1);
-    bullets.set(data.id, bullet);
-    return bullet;
+    // 강타 총알인지 확인 (데미지가 100인 경우)
+    const isPowerShot = data.damage >= 100;
+    
+    let bulletGraphic;
+    
+    if (isPowerShot) {
+        // 강타 총알 - 더 크고 화려한 효과
+        bulletGraphic = gameScene.add.circle(data.x, data.y, 8, 0xff0000); // 빨간색, 더 큰 크기
+        bulletGraphic.setStrokeStyle(3, 0xffff00); // 노란색 테두리
+        
+        // 강타 총알 특별 효과들
+        
+        // 1. 내부 코어 (밝은 빨간색)
+        const core = gameScene.add.circle(data.x, data.y, 4, 0xff4444);
+        core.setDepth(2);
+        
+        // 2. 외부 오라 (반투명 주황색)
+        const aura = gameScene.add.circle(data.x, data.y, 12, 0xff8800, 0.3);
+        aura.setDepth(0);
+        
+        // 3. 회전하는 링 효과
+        const ring1 = gameScene.add.circle(data.x, data.y, 10, 0x000000, 0);
+        ring1.setStrokeStyle(2, 0xffaa00, 0.8);
+        ring1.setDepth(1);
+        
+        const ring2 = gameScene.add.circle(data.x, data.y, 14, 0x000000, 0);
+        ring2.setStrokeStyle(1, 0xff6600, 0.6);
+        ring2.setDepth(1);
+        
+        // 4. 파티클 효과 (작은 불꽃들)
+        const particles = [];
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2;
+            const distance = 6;
+            const particleX = data.x + Math.cos(angle) * distance;
+            const particleY = data.y + Math.sin(angle) * distance;
+            
+            const particle = gameScene.add.circle(particleX, particleY, 1, 0xffff00);
+            particle.setDepth(3);
+            particles.push(particle);
+        }
+        
+        // 애니메이션 효과들
+        
+        // 메인 총알 펄스 효과
+        gameScene.tweens.add({
+            targets: bulletGraphic,
+            scaleX: 1.3,
+            scaleY: 1.3,
+            duration: 200,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+        
+        // 코어 깜빡임
+        gameScene.tweens.add({
+            targets: core,
+            alpha: 0.3,
+            duration: 150,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Power2'
+        });
+        
+        // 오라 펄스
+        gameScene.tweens.add({
+            targets: aura,
+            scaleX: 1.5,
+            scaleY: 1.5,
+            alpha: 0.1,
+            duration: 300,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+        
+        // 링 회전
+        gameScene.tweens.add({
+            targets: ring1,
+            rotation: Math.PI * 2,
+            duration: 1000,
+            repeat: -1,
+            ease: 'Linear'
+        });
+        
+        gameScene.tweens.add({
+            targets: ring2,
+            rotation: -Math.PI * 2,
+            duration: 1500,
+            repeat: -1,
+            ease: 'Linear'
+        });
+        
+        // 파티클 회전
+        particles.forEach((particle, index) => {
+            gameScene.tweens.add({
+                targets: particle,
+                rotation: Math.PI * 2,
+                duration: 800 + (index * 100),
+                repeat: -1,
+                ease: 'Linear'
+            });
+            
+            // 파티클 깜빡임
+            gameScene.tweens.add({
+                targets: particle,
+                alpha: 0.2,
+                scaleX: 0.5,
+                scaleY: 0.5,
+                duration: 200 + (index * 50),
+                yoyo: true,
+                repeat: -1,
+                ease: 'Power2'
+            });
+        });
+        
+        // 강타 총알 발사 사운드 재생
+        playPowerShotFireSound();
+        
+        // 총알 객체에 모든 그래픽 요소들 저장
+        const bullet = {
+            ...data,
+            graphic: bulletGraphic,
+            isPowerShot: true,
+            effects: {
+                core: core,
+                aura: aura,
+                ring1: ring1,
+                ring2: ring2,
+                particles: particles
+            }
+        };
+        
+        bulletGraphic.setDepth(2);
+        bullets.set(data.id, bullet);
+        return bullet;
+        
+    } else {
+        // 일반 총알
+        bulletGraphic = gameScene.add.circle(data.x, data.y, 4, bulletColor);
+        bulletGraphic.setStrokeStyle(1, 0xffffff);
+        bulletGraphic.setDepth(1);
+        
+        const bullet = {
+            ...data,
+            graphic: bulletGraphic,
+            isPowerShot: false
+        };
+        
+        bullets.set(data.id, bullet);
+        return bullet;
+    }
 }
 
 function updateBullet(bullet, data) {
@@ -943,6 +1488,26 @@ function updateBullet(bullet, data) {
         // 총알은 빠르게 움직이므로 보간 없이 직접 업데이트
         bullet.graphic.x = data.x;
         bullet.graphic.y = data.y;
+        
+        // 강타 총알의 경우 모든 효과들도 함께 이동
+        if (bullet.isPowerShot && bullet.effects) {
+            bullet.effects.core.x = data.x;
+            bullet.effects.core.y = data.y;
+            bullet.effects.aura.x = data.x;
+            bullet.effects.aura.y = data.y;
+            bullet.effects.ring1.x = data.x;
+            bullet.effects.ring1.y = data.y;
+            bullet.effects.ring2.x = data.x;
+            bullet.effects.ring2.y = data.y;
+            
+            // 파티클들도 총알 주위로 이동
+            bullet.effects.particles.forEach((particle, index) => {
+                const angle = (index / bullet.effects.particles.length) * Math.PI * 2 + (Date.now() * 0.01);
+                const distance = 6;
+                particle.x = data.x + Math.cos(angle) * distance;
+                particle.y = data.y + Math.sin(angle) * distance;
+            });
+        }
     }
 }
 
@@ -1250,14 +1815,170 @@ function createUI() {
         size: skillIconSize
     };
     
+    // === 4번 스킬 UI (3번 스킬 오른쪽) ===
+    const skill4IconX = skill3IconX + skillIconSize + 20;
+    const skill4IconY = skillIconY;
+    
+    // 4번 스킬 아이콘 배경
+    gameScene.skill4IconBg = gameScene.add.rectangle(
+        skill4IconX + skillIconSize/2, 
+        skill4IconY - skillIconSize/2, 
+        skillIconSize, 
+        skillIconSize, 
+        0x333333
+    );
+    gameScene.skill4IconBg.setStrokeStyle(2, 0x666666);
+    gameScene.skill4IconBg.setScrollFactor(0);
+    gameScene.skill4IconBg.setDepth(10);
+    
+    // 4번 스킬명을 사각형 가운데에 표시
+    gameScene.skill4NameInBox = gameScene.add.text(
+        skill4IconX + skillIconSize/2,
+        skill4IconY - skillIconSize/2,
+        '강타',
+        {
+            fontSize: '16px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.skill4NameInBox.setOrigin(0.5);
+    gameScene.skill4NameInBox.setScrollFactor(0);
+    gameScene.skill4NameInBox.setDepth(11);
+    
+    // 4번 스킬 키 표시 (4)
+    gameScene.skill4KeyText = gameScene.add.text(
+        skill4IconX + skillIconSize/2,
+        skill4IconY - skillIconSize + 8,
+        '4',
+        {
+            fontSize: '12px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.skill4KeyText.setOrigin(0.5);
+    gameScene.skill4KeyText.setScrollFactor(0);
+    gameScene.skill4KeyText.setDepth(11);
+    
+    // 4번 스킬 시간 표시 텍스트 (아이콘 중앙)
+    gameScene.skill4TimeText = gameScene.add.text(
+        skill4IconX + skillIconSize/2,
+        skill4IconY - skillIconSize/2 + 15,
+        '',
+        {
+            fontSize: '16px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        }
+    );
+    gameScene.skill4TimeText.setOrigin(0.5);
+    gameScene.skill4TimeText.setScrollFactor(0);
+    gameScene.skill4TimeText.setDepth(14);
+    
+    // 4번 스킬 쿨다운 진행률 표시용 원형 오버레이
+    gameScene.skill4CooldownCircle = gameScene.add.graphics();
+    gameScene.skill4CooldownCircle.setScrollFactor(0);
+    gameScene.skill4CooldownCircle.setDepth(12);
+    
+    // 4번 스킬 아이콘 위치 저장
+    gameScene.skill4IconPos = {
+        x: skill4IconX + skillIconSize/2,
+        y: skill4IconY - skillIconSize/2,
+        size: skillIconSize
+    };
+    
+    // === 5번 스킬 UI (4번 스킬 오른쪽) ===
+    const skill5IconX = skill4IconX + skillIconSize + 20;
+    const skill5IconY = skillIconY;
+    
+    // 5번 스킬 아이콘 배경
+    gameScene.skill5IconBg = gameScene.add.rectangle(
+        skill5IconX + skillIconSize/2, 
+        skill5IconY - skillIconSize/2, 
+        skillIconSize, 
+        skillIconSize, 
+        0x333333
+    );
+    gameScene.skill5IconBg.setStrokeStyle(2, 0x666666);
+    gameScene.skill5IconBg.setScrollFactor(0);
+    gameScene.skill5IconBg.setDepth(10);
+    
+    // 5번 스킬명을 사각형 가운데에 표시
+    gameScene.skill5NameInBox = gameScene.add.text(
+        skill5IconX + skillIconSize/2,
+        skill5IconY - skillIconSize/2,
+        '방어막',
+        {
+            fontSize: '16px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.skill5NameInBox.setOrigin(0.5);
+    gameScene.skill5NameInBox.setScrollFactor(0);
+    gameScene.skill5NameInBox.setDepth(11);
+    
+    // 5번 스킬 키 표시 (5)
+    gameScene.skill5KeyText = gameScene.add.text(
+        skill5IconX + skillIconSize/2,
+        skill5IconY - skillIconSize + 8,
+        '5',
+        {
+            fontSize: '12px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.skill5KeyText.setOrigin(0.5);
+    gameScene.skill5KeyText.setScrollFactor(0);
+    gameScene.skill5KeyText.setDepth(11);
+    
+    // 5번 스킬 시간 표시 텍스트 (아이콘 중앙)
+    gameScene.skill5TimeText = gameScene.add.text(
+        skill5IconX + skillIconSize/2,
+        skill5IconY - skillIconSize/2 + 15,
+        '',
+        {
+            fontSize: '16px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        }
+    );
+    gameScene.skill5TimeText.setOrigin(0.5);
+    gameScene.skill5TimeText.setScrollFactor(0);
+    gameScene.skill5TimeText.setDepth(14);
+    
+    // 5번 스킬 쿨다운 진행률 표시용 원형 오버레이
+    gameScene.skill5CooldownCircle = gameScene.add.graphics();
+    gameScene.skill5CooldownCircle.setScrollFactor(0);
+    gameScene.skill5CooldownCircle.setDepth(12);
+    
+    // 5번 스킬 아이콘 위치 저장
+    gameScene.skill5IconPos = {
+        x: skill5IconX + skillIconSize/2,
+        y: skill5IconY - skillIconSize/2,
+        size: skillIconSize
+    };
+    
     // === 스코어보드 UI (우상단) ===
     createScoreboard();
     
     // 조작법 안내 (우하단) - PVP 게임용
     const controlsText = gameScene.add.text(
         gameConfig.width - 20,
-        gameConfig.height - 100,
-        '조작법:\n화살표키 또는 WASD: 이동\n스페이스: 발사\n숫자1: 연사 스킬\n숫자2: 가속 스킬\n숫자3: 회복 스킬',
+        gameConfig.height - 120,
+        '조작법:\n화살표키 또는 WASD: 이동\n스페이스: 발사\n숫자1: 연사 스킬\n숫자2: 가속 스킬\n숫자3: 회복 스킬\n숫자4: 강타 스킬\n숫자5: 방어막 스킬\nEnter: 채팅',
         {
             fontSize: '11px',
             fill: '#cccccc',
@@ -1268,6 +1989,79 @@ function createUI() {
     controlsText.setOrigin(1, 0);
     controlsText.setScrollFactor(0);
     controlsText.setDepth(10);
+    
+    // === 채팅창 UI (왼쪽 중간) ===
+    const chatX = 20;
+    const chatY = gameConfig.height / 2;
+    const chatWidth = 300;
+    const chatHeight = 250;
+    
+    // 채팅창 배경 (더 투명하게)
+    gameScene.chatContainer = gameScene.add.rectangle(
+        chatX + chatWidth/2,
+        chatY,
+        chatWidth,
+        chatHeight,
+        0x000000,
+        0.3 // 투명도 0.7에서 0.3으로 변경
+    );
+    gameScene.chatContainer.setStrokeStyle(1, 0x666666, 0.5); // 테두리도 더 투명하게
+    gameScene.chatContainer.setScrollFactor(0);
+    gameScene.chatContainer.setDepth(15);
+    gameScene.chatContainer.setOrigin(0.5, 1); // 하단 중앙 기준
+    gameScene.chatContainer.setInteractive(); // 클릭 가능하게
+    gameScene.chatContainer.on('pointerdown', toggleChatCollapse); // 클릭 이벤트
+    
+    // 채팅창 제목 (클릭 가능 표시 추가)
+    gameScene.chatTitle = gameScene.add.text(
+        chatX + chatWidth/2,
+        chatY - chatHeight + 15,
+        '💬 채팅 (Enter: 입력, 클릭: 접기)',
+        {
+            fontSize: '13px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.chatTitle.setOrigin(0.5);
+    gameScene.chatTitle.setScrollFactor(0);
+    gameScene.chatTitle.setDepth(16);
+    
+    // 채팅 입력창 배경 (더 투명하게)
+    gameScene.chatInputBox = gameScene.add.rectangle(
+        chatX + chatWidth/2,
+        chatY - 15,
+        chatWidth - 20,
+        25,
+        0x222222,
+        0.7 // 약간 더 불투명하게 (입력창은 보여야 하므로)
+    );
+    gameScene.chatInputBox.setStrokeStyle(1, 0x666666);
+    gameScene.chatInputBox.setScrollFactor(0);
+    gameScene.chatInputBox.setDepth(16);
+    gameScene.chatInputBox.setVisible(false);
+    
+    // 채팅 입력 텍스트
+    gameScene.chatInputText = gameScene.add.text(
+        chatX + 15,
+        chatY - 15,
+        '',
+        {
+            fontSize: '12px',
+            fill: '#ffffff',
+            fontFamily: 'Arial'
+        }
+    );
+    gameScene.chatInputText.setScrollFactor(0);
+    gameScene.chatInputText.setDepth(17);
+    gameScene.chatInputText.setVisible(false);
+    
+    // 채팅 메시지 텍스트들을 저장할 배열
+    gameScene.chatMessageTexts = [];
+    
+    // 초기 채팅 UI 업데이트
+    updateChatUI();
 }
 
 function updateUI(stats, pvpStats) {
@@ -1736,46 +2530,174 @@ function updateMinimapOtherPlayers(allPlayers) {
 
 // 피격 효과 표시 - 모든 플레이어에게 동일하게 표시
 function showHitDamageEffect(data) {
+    // 강타 총알인지 확인
+    const isPowerShotHit = data.damage >= 100;
+    
     // 자신이 피격당한 경우가 아닐 때만 피해량 텍스트 표시 (중복 방지)
     if (data.targetId !== socket.id) {
         // 피격 위치에 피해량 표시
+        const damageColor = isPowerShotHit ? '#ff0000' : '#ff4444';
+        const fontSize = isPowerShotHit ? '28px' : '20px';
+        
         const damageText = gameScene.add.text(data.targetX, data.targetY - 30, `-${data.damage}`, {
-            fontSize: '20px',
-            fill: '#ff4444',
-            fontWeight: 'bold'
+            fontSize: fontSize,
+            fill: damageColor,
+            fontWeight: 'bold',
+            stroke: '#000000',
+            strokeThickness: 3
         }).setDepth(600);
         
-        // 피해량 텍스트 애니메이션
+        // 강타 총알 피해량 텍스트에 특별 효과
+        if (isPowerShotHit) {
+            // 크리티컬 텍스트 추가
+            const criticalText = gameScene.add.text(data.targetX, data.targetY - 60, 'CRITICAL!', {
+                fontSize: '20px',
+                fill: '#ffff00',
+                fontWeight: 'bold',
+                stroke: '#ff0000',
+                strokeThickness: 2
+            }).setDepth(601);
+            
+            // 크리티컬 텍스트 애니메이션
+            gameScene.tweens.add({
+                targets: criticalText,
+                y: data.targetY - 90,
+                scaleX: 1.5,
+                scaleY: 1.5,
+                alpha: 0,
+                duration: 1200,
+                ease: 'Power2',
+                onComplete: () => {
+                    criticalText.destroy();
+                }
+            });
+            
+            // 피해량 텍스트 강화 애니메이션
+            gameScene.tweens.add({
+                targets: damageText,
+                y: data.targetY - 80,
+                scaleX: 1.3,
+                scaleY: 1.3,
+                alpha: 0,
+                duration: 1500,
+                ease: 'Power2',
+                onComplete: () => {
+                    damageText.destroy();
+                }
+            });
+            
+            // 강타 피격 사운드 재생
+            playPowerShotHitSound();
+            
+        } else {
+            // 일반 피해량 텍스트 애니메이션
+            gameScene.tweens.add({
+                targets: damageText,
+                y: data.targetY - 60,
+                alpha: 0,
+                duration: 1000,
+                ease: 'Power2',
+                onComplete: () => {
+                    damageText.destroy();
+                }
+            });
+        }
+    }
+    
+    // 피격 위치에 마커 (강타 총알은 더 큰 폭발 효과)
+    if (isPowerShotHit) {
+        // 강타 총알 폭발 효과
+        
+        // 메인 폭발 (큰 빨간 원)
+        const mainExplosion = gameScene.add.circle(data.targetX, data.targetY, 25, 0xff0000, 0.8);
+        mainExplosion.setDepth(500);
+        
+        // 충격파 (확산되는 링)
+        const shockwave = gameScene.add.circle(data.targetX, data.targetY, 15, 0x000000, 0);
+        shockwave.setStrokeStyle(4, 0xff4400, 0.9);
+        shockwave.setDepth(501);
+        
+        // 파편 효과 (작은 파티클들)
+        const fragments = [];
+        for (let i = 0; i < 12; i++) {
+            const angle = (i / 12) * Math.PI * 2;
+            const distance = 20 + Math.random() * 15;
+            const fragmentX = data.targetX + Math.cos(angle) * distance;
+            const fragmentY = data.targetY + Math.sin(angle) * distance;
+            
+            const fragment = gameScene.add.circle(fragmentX, fragmentY, 2 + Math.random() * 2, 0xffaa00);
+            fragment.setDepth(502);
+            fragments.push(fragment);
+        }
+        
+        // 메인 폭발 애니메이션
         gameScene.tweens.add({
-            targets: damageText,
-            y: data.targetY - 60,
+            targets: mainExplosion,
+            scaleX: 3,
+            scaleY: 3,
             alpha: 0,
-            duration: 1000,
+            duration: 600,
             ease: 'Power2',
             onComplete: () => {
-                damageText.destroy();
+                mainExplosion.destroy();
+            }
+        });
+        
+        // 충격파 애니메이션
+        gameScene.tweens.add({
+            targets: shockwave,
+            scaleX: 4,
+            scaleY: 4,
+            alpha: 0,
+            duration: 800,
+            ease: 'Power2',
+            onComplete: () => {
+                shockwave.destroy();
+            }
+        });
+        
+        // 파편 애니메이션
+        fragments.forEach((fragment, index) => {
+            const angle = (index / fragments.length) * Math.PI * 2;
+            const finalDistance = 40 + Math.random() * 20;
+            const finalX = data.targetX + Math.cos(angle) * finalDistance;
+            const finalY = data.targetY + Math.sin(angle) * finalDistance;
+            
+            gameScene.tweens.add({
+                targets: fragment,
+                x: finalX,
+                y: finalY,
+                scaleX: 0.2,
+                scaleY: 0.2,
+                alpha: 0,
+                duration: 700 + Math.random() * 300,
+                ease: 'Power2',
+                onComplete: () => {
+                    fragment.destroy();
+                }
+            });
+        });
+        
+    } else {
+        // 일반 총알 피격 마커
+        const hitMarker = gameScene.add.circle(data.targetX, data.targetY, 15, 0xff0000, 0.7);
+        hitMarker.setDepth(500);
+        
+        // 일반 피격 마커 애니메이션
+        gameScene.tweens.add({
+            targets: hitMarker,
+            scaleX: 2,
+            scaleY: 2,
+            alpha: 0,
+            duration: 500,
+            ease: 'Power2',
+            onComplete: () => {
+                hitMarker.destroy();
             }
         });
     }
     
-    // 피격 위치에 빨간 원형 마커 (모든 플레이어에게 표시)
-    const hitMarker = gameScene.add.circle(data.targetX, data.targetY, 15, 0xff0000, 0.7);
-    hitMarker.setDepth(500);
-    
-    // 피격 마커 애니메이션
-    gameScene.tweens.add({
-        targets: hitMarker,
-        scaleX: 2,
-        scaleY: 2,
-        alpha: 0,
-        duration: 500,
-        ease: 'Power2',
-        onComplete: () => {
-            hitMarker.destroy();
-        }
-    });
-    
-    console.log(`피격 발생! 공격자: ${data.attackerId}, 피격자: ${data.targetId}, 피해량: ${data.damage}`);
+    console.log(`피격 발생! 공격자: ${data.attackerId}, 피격자: ${data.targetId}, 피해량: ${data.damage}${isPowerShotHit ? ' (강타!)' : ''}`);
 }
 
 // 리스폰 효과 표시
@@ -2051,6 +2973,33 @@ function playSkillDeactivationSound() {
     }
 }
 
+// 강력한 공격 스킬 활성화 사운드
+function playPowerShotActivationSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(150, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(300, audioContext.currentTime + 0.1);
+        oscillator.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.3);
+        oscillator.frequency.exponentialRampToValueAtTime(1200, audioContext.currentTime + 0.5);
+        
+        gainNode.gain.setValueAtTime(0.25, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (error) {
+        console.log('강력한 공격 스킬 활성화 사운드 재생 오류:', error);
+    }
+}
+
 // 킬 사운드
 function playKillSound() {
     if (!audioContext || !isSoundEnabled) return;
@@ -2236,8 +3185,648 @@ function showHealEffect(data) {
     }
 }
 
+// 서버에서 총알이 제거될 때 호출되는 함수 수정
+function removeBullet(bulletId) {
+    const bullet = bullets.get(bulletId);
+    if (bullet) {
+        // 일반 총알 그래픽 제거
+        if (bullet.graphic) {
+            bullet.graphic.destroy();
+        }
+        
+        // 강타 총알의 경우 모든 효과들도 제거
+        if (bullet.isPowerShot && bullet.effects) {
+            bullet.effects.core.destroy();
+            bullet.effects.aura.destroy();
+            bullet.effects.ring1.destroy();
+            bullet.effects.ring2.destroy();
+            bullet.effects.particles.forEach(particle => particle.destroy());
+        }
+        
+        bullets.delete(bulletId);
+    }
+}
+
+// 강타 총알 발사 사운드
+function playPowerShotFireSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        // 첫 번째 사운드 - 깊은 폭발음
+        const osc1 = audioContext.createOscillator();
+        const gain1 = audioContext.createGain();
+        
+        osc1.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(80, audioContext.currentTime);
+        osc1.frequency.exponentialRampToValueAtTime(40, audioContext.currentTime + 0.3);
+        
+        gain1.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        osc1.connect(gain1);
+        gain1.connect(audioContext.destination);
+        osc1.start(audioContext.currentTime);
+        osc1.stop(audioContext.currentTime + 0.3);
+        
+        // 두 번째 사운드 - 높은 음의 에너지 충전음
+        setTimeout(() => {
+            const osc2 = audioContext.createOscillator();
+            const gain2 = audioContext.createGain();
+            
+            osc2.type = 'square';
+            osc2.frequency.setValueAtTime(400, audioContext.currentTime);
+            osc2.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
+            osc2.frequency.exponentialRampToValueAtTime(1200, audioContext.currentTime + 0.2);
+            
+            gain2.gain.setValueAtTime(0.2, audioContext.currentTime);
+            gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+            
+            osc2.connect(gain2);
+            gain2.connect(audioContext.destination);
+            osc2.start(audioContext.currentTime);
+            osc2.stop(audioContext.currentTime + 0.2);
+        }, 50);
+        
+        // 세 번째 사운드 - 날카로운 발사음
+        setTimeout(() => {
+            const osc3 = audioContext.createOscillator();
+            const gain3 = audioContext.createGain();
+            
+            osc3.type = 'triangle';
+            osc3.frequency.setValueAtTime(1500, audioContext.currentTime);
+            osc3.frequency.exponentialRampToValueAtTime(2000, audioContext.currentTime + 0.05);
+            osc3.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.15);
+            
+            gain3.gain.setValueAtTime(0.25, audioContext.currentTime);
+            gain3.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+            
+            osc3.connect(gain3);
+            gain3.connect(audioContext.destination);
+            osc3.start(audioContext.currentTime);
+            osc3.stop(audioContext.currentTime + 0.15);
+        }, 100);
+        
+    } catch (error) {
+        console.log('강타 총알 발사 사운드 재생 오류:', error);
+    }
+}
+
+// 강타 총알 피격 사운드
+function playPowerShotHitSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        // 첫 번째 사운드 - 강력한 폭발음
+        const osc1 = audioContext.createOscillator();
+        const gain1 = audioContext.createGain();
+        
+        osc1.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(60, audioContext.currentTime);
+        osc1.frequency.exponentialRampToValueAtTime(30, audioContext.currentTime + 0.4);
+        
+        gain1.gain.setValueAtTime(0.4, audioContext.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+        
+        osc1.connect(gain1);
+        gain1.connect(audioContext.destination);
+        osc1.start(audioContext.currentTime);
+        osc1.stop(audioContext.currentTime + 0.4);
+        
+        // 두 번째 사운드 - 금속성 충격음
+        setTimeout(() => {
+            const osc2 = audioContext.createOscillator();
+            const gain2 = audioContext.createGain();
+            
+            osc2.type = 'square';
+            osc2.frequency.setValueAtTime(800, audioContext.currentTime);
+            osc2.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.2);
+            
+            gain2.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+            
+            osc2.connect(gain2);
+            gain2.connect(audioContext.destination);
+            osc2.start(audioContext.currentTime);
+            osc2.stop(audioContext.currentTime + 0.2);
+        }, 100);
+        
+        // 세 번째 사운드 - 에코 효과
+        setTimeout(() => {
+            const osc3 = audioContext.createOscillator();
+            const gain3 = audioContext.createGain();
+            
+            osc3.type = 'triangle';
+            osc3.frequency.setValueAtTime(400, audioContext.currentTime);
+            osc3.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.3);
+            
+            gain3.gain.setValueAtTime(0.2, audioContext.currentTime);
+            gain3.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+            
+            osc3.connect(gain3);
+            gain3.connect(audioContext.destination);
+            osc3.start(audioContext.currentTime);
+            osc3.stop(audioContext.currentTime + 0.3);
+        }, 200);
+        
+    } catch (error) {
+        console.log('강타 총알 피격 사운드 재생 오류:', error);
+    }
+}
+
+// 방어막 피격 이벤트 처리
+function showShieldHitEffect(data) {
+    // 방어막 피격 효과 - 파란색 육각형 방어막
+    const shieldHex = gameScene.add.polygon(data.x, data.y, [
+        [-20, -10], [0, -20], [20, -10], 
+        [20, 10], [0, 20], [-20, 10]
+    ], 0x00aaff, 0.7);
+    shieldHex.setStrokeStyle(3, 0x00ffff, 1);
+    shieldHex.setDepth(500);
+    
+    // 충격파 링
+    const shockRing = gameScene.add.circle(data.x, data.y, 15, 0x000000, 0);
+    shockRing.setStrokeStyle(4, 0x00aaff, 0.8);
+    shockRing.setDepth(501);
+    
+    // 에너지 파편들
+    const fragments = [];
+    for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const distance = 15;
+        const fragmentX = data.x + Math.cos(angle) * distance;
+        const fragmentY = data.y + Math.sin(angle) * distance;
+        
+        const fragment = gameScene.add.circle(fragmentX, fragmentY, 2, 0x00ffff);
+        fragment.setDepth(502);
+        fragments.push(fragment);
+    }
+    
+    // "BLOCKED!" 텍스트
+    const blockedText = gameScene.add.text(data.x, data.y - 40, 'BLOCKED!', {
+        fontSize: '18px',
+        fill: '#00ffff',
+        fontWeight: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setDepth(503);
+    blockedText.setOrigin(0.5);
+    
+    // 방어막 육각형 애니메이션
+    gameScene.tweens.add({
+        targets: shieldHex,
+        scaleX: 1.5,
+        scaleY: 1.5,
+        alpha: 0,
+        duration: 600,
+        ease: 'Power2',
+        onComplete: () => {
+            shieldHex.destroy();
+        }
+    });
+    
+    // 충격파 애니메이션
+    gameScene.tweens.add({
+        targets: shockRing,
+        scaleX: 3,
+        scaleY: 3,
+        alpha: 0,
+        duration: 800,
+        ease: 'Power2',
+        onComplete: () => {
+            shockRing.destroy();
+        }
+    });
+    
+    // 파편 애니메이션
+    fragments.forEach((fragment, index) => {
+        const angle = (index / fragments.length) * Math.PI * 2;
+        const finalDistance = 30 + Math.random() * 10;
+        const finalX = data.x + Math.cos(angle) * finalDistance;
+        const finalY = data.y + Math.sin(angle) * finalDistance;
+        
+        gameScene.tweens.add({
+            targets: fragment,
+            x: finalX,
+            y: finalY,
+            alpha: 0,
+            duration: 500 + Math.random() * 200,
+            ease: 'Power2',
+            onComplete: () => {
+                fragment.destroy();
+            }
+        });
+    });
+    
+    // 텍스트 애니메이션
+    gameScene.tweens.add({
+        targets: blockedText,
+        y: data.y - 70,
+        scaleX: 1.2,
+        scaleY: 1.2,
+        alpha: 0,
+        duration: 1000,
+        ease: 'Power2',
+        onComplete: () => {
+            blockedText.destroy();
+        }
+    });
+    
+    // 방어막 피격 사운드 재생
+    playShieldHitSound();
+    
+    console.log(`방어막 피격! 공격자: ${data.attackerId}, 피격자: ${data.playerId} - 피해 차단됨!`);
+}
+
+// 방어막 스킬 활성화 사운드
+function playShieldActivationSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(300, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(600, audioContext.currentTime + 0.2);
+        oscillator.frequency.exponentialRampToValueAtTime(900, audioContext.currentTime + 0.4);
+        
+        gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.4);
+    } catch (error) {
+        console.log('방어막 스킬 활성화 사운드 재생 오류:', error);
+    }
+}
+
+// 방어막 스킬 비활성화 사운드
+function playShieldDeactivationSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.2);
+        
+        gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.2);
+    } catch (error) {
+        console.log('방어막 스킬 비활성화 사운드 재생 오류:', error);
+    }
+}
+
+// 방어막 피격 사운드
+function playShieldHitSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        // 첫 번째 사운드 - 에너지 차단음
+        const osc1 = audioContext.createOscillator();
+        const gain1 = audioContext.createGain();
+        
+        osc1.type = 'square';
+        osc1.frequency.setValueAtTime(600, audioContext.currentTime);
+        osc1.frequency.exponentialRampToValueAtTime(1200, audioContext.currentTime + 0.1);
+        osc1.frequency.exponentialRampToValueAtTime(300, audioContext.currentTime + 0.2);
+        
+        gain1.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        
+        osc1.connect(gain1);
+        gain1.connect(audioContext.destination);
+        osc1.start(audioContext.currentTime);
+        osc1.stop(audioContext.currentTime + 0.2);
+        
+        // 두 번째 사운드 - 전자음 효과
+        setTimeout(() => {
+            const osc2 = audioContext.createOscillator();
+            const gain2 = audioContext.createGain();
+            
+            osc2.type = 'triangle';
+            osc2.frequency.setValueAtTime(800, audioContext.currentTime);
+            osc2.frequency.exponentialRampToValueAtTime(1600, audioContext.currentTime + 0.05);
+            osc2.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.15);
+            
+            gain2.gain.setValueAtTime(0.15, audioContext.currentTime);
+            gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+            
+            osc2.connect(gain2);
+            gain2.connect(audioContext.destination);
+            osc2.start(audioContext.currentTime);
+            osc2.stop(audioContext.currentTime + 0.15);
+        }, 50);
+        
+    } catch (error) {
+        console.log('방어막 피격 사운드 재생 오류:', error);
+    }
+}
+
+function handleChatInput() {
+    // Enter 키로 채팅 입력 모드 시작 (채팅 입력 중이 아닐 때만)
+    // 추가 조건: Enter 키가 차단되어 있지 않을 때만
+    if (Phaser.Input.Keyboard.JustDown(enterKey) && !chatInputActive && !enterKeyBlocked) {
+        // 채팅 입력 모드 시작
+        chatInputActive = true;
+        chatInputText = '';
+        
+        // 숨겨진 HTML input 요소 생성 (한글 조합 문자 처리용)
+        if (!gameScene.hiddenInput) {
+            gameScene.hiddenInput = document.createElement('input');
+            gameScene.hiddenInput.type = 'text';
+            gameScene.hiddenInput.style.position = 'absolute';
+            gameScene.hiddenInput.style.left = '-9999px';
+            gameScene.hiddenInput.style.opacity = '0';
+            gameScene.hiddenInput.maxLength = 50;
+            document.body.appendChild(gameScene.hiddenInput);
+            
+            // input 이벤트로 한글 조합 완료된 텍스트만 받기
+            gameScene.hiddenInput.addEventListener('input', (e) => {
+                if (chatInputActive) {
+                    chatInputText = e.target.value;
+                    updateChatUI();
+                }
+            });
+            
+            // 키 이벤트 처리
+            gameScene.hiddenInput.addEventListener('keydown', (e) => {
+                if (!chatInputActive) return;
+                
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation(); // 이벤트 전파 중단
+                    
+                    // Enter 키 차단 시작 (Phaser Enter 키 처리 방지)
+                    enterKeyBlocked = true;
+                    
+                    // 채팅 메시지 전송
+                    if (chatInputText.trim().length > 0) {
+                        sendChatMessage(chatInputText.trim());
+                    }
+                    
+                    // ESC 키를 누른 것과 동일하게 처리 - 완전한 게임 모드 복귀
+                    chatInputActive = false;
+                    chatInputText = '';
+                    gameScene.hiddenInput.value = '';
+                    gameScene.hiddenInput.blur();
+                    gameScene.hiddenInput.style.display = 'none';
+                    
+                    // 게임 캔버스에 포커스 복귀 및 키보드 이벤트 재활성화
+                    if (gameScene.game && gameScene.game.canvas) {
+                        gameScene.game.canvas.focus();
+                        gameScene.game.canvas.click(); // 강제로 클릭 이벤트 발생
+                    }
+                    
+                    // Phaser 입력 시스템 재활성화
+                    if (gameScene.input && gameScene.input.keyboard) {
+                        gameScene.input.keyboard.enabled = true;
+                    }
+                    
+                    updateChatUI();
+                    console.log('메시지 전송 완료 - 게임 모드로 즉시 복귀');
+                    
+                    // 200ms 후 Enter 키 차단 해제 (충분한 시간 확보)
+                    setTimeout(() => {
+                        enterKeyBlocked = false;
+                        console.log('Enter 키 차단 해제');
+                    }, 200);
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    // 채팅 모드 취소 및 완전한 게임 모드로 복귀
+                    chatInputActive = false;
+                    chatInputText = '';
+                    gameScene.hiddenInput.value = '';
+                    gameScene.hiddenInput.blur();
+                    gameScene.hiddenInput.style.display = 'none';
+                    
+                    // 게임 캔버스에 포커스 복귀 및 키보드 이벤트 재활성화
+                    if (gameScene.game && gameScene.game.canvas) {
+                        gameScene.game.canvas.focus();
+                        gameScene.game.canvas.click(); // 강제로 클릭 이벤트 발생
+                    }
+                    
+                    // Phaser 입력 시스템 재활성화
+                    if (gameScene.input && gameScene.input.keyboard) {
+                        gameScene.input.keyboard.enabled = true;
+                    }
+                    
+                    updateChatUI();
+                    console.log('채팅 입력 취소 - 게임 모드로 완전 복귀');
+                }
+                // 다른 모든 키는 기본 동작 허용 (숫자키 포함)
+            });
+        }
+        
+        // 숨겨진 input에 포커스를 주어 한글 입력 활성화
+        gameScene.hiddenInput.value = '';
+        gameScene.hiddenInput.style.display = 'block'; // 채팅 시작 시 다시 보이게
+        gameScene.hiddenInput.focus();
+        
+        updateChatUI();
+        console.log('채팅 입력 모드 시작');
+    }
+    
+    // ESC 키로 채팅 입력 취소 (Phaser 키보드로도 처리)
+    if (chatInputActive && Phaser.Input.Keyboard.JustDown(gameScene.input.keyboard.addKey('ESC'))) {
+        // 채팅 모드 취소 및 완전한 게임 모드로 복귀
+        chatInputActive = false;
+        chatInputText = '';
+        if (gameScene.hiddenInput) {
+            gameScene.hiddenInput.value = '';
+            gameScene.hiddenInput.blur();
+            gameScene.hiddenInput.style.display = 'none';
+        }
+        
+        // 게임 캔버스에 포커스 복귀 및 키보드 이벤트 재활성화
+        if (gameScene.game && gameScene.game.canvas) {
+            gameScene.game.canvas.focus();
+            gameScene.game.canvas.click(); // 강제로 클릭 이벤트 발생
+        }
+        
+        // Phaser 입력 시스템 재활성화
+        if (gameScene.input && gameScene.input.keyboard) {
+            gameScene.input.keyboard.enabled = true;
+        }
+        
+        updateChatUI();
+        console.log('채팅 입력 취소 - 게임 모드로 완전 복귀');
+    }
+}
+
+function toggleChatCollapse() {
+    chatCollapsed = !chatCollapsed;
+    updateChatUI();
+    console.log('채팅창 상태:', chatCollapsed ? '접힘' : '펼침');
+}
+
+function sendChatMessage(message) {
+    // 서버에 채팅 메시지 전송
+    socket.emit('chat_message', { message: message });
+}
+
+function addChatMessage(playerId, message) {
+    // 채팅 메시지 추가 (플레이어 ID와 메시지만 저장)
+    chatMessages.push({
+        playerId: playerId,
+        message: message
+    });
+    
+    // 최대 10개 메시지만 유지
+    if (chatMessages.length > 10) {
+        chatMessages.shift();
+    }
+    
+    updateChatUI();
+}
+
+function updateChatUI() {
+    if (!gameScene.chatContainer) return;
+    
+    // 채팅창 접힘/펼침 상태 처리
+    if (chatCollapsed) {
+        // 접힌 상태 - 제목만 보이게
+        gameScene.chatContainer.setVisible(false);
+        gameScene.chatInputBox.setVisible(false);
+        gameScene.chatInputText.setVisible(false);
+        
+        // 채팅 메시지들 숨김
+        gameScene.chatMessageTexts.forEach(text => text.setVisible(false));
+        
+        // 접힌 상태 표시용 작은 박스
+        if (!gameScene.chatCollapsedBox) {
+            gameScene.chatCollapsedBox = gameScene.add.rectangle(
+                170, // chatX + chatWidth/2
+                gameScene.chatContainer.y - 125, // 위쪽으로 이동
+                300,
+                30,
+                0x000000,
+                0.3
+            );
+            gameScene.chatCollapsedBox.setStrokeStyle(1, 0x666666);
+            gameScene.chatCollapsedBox.setScrollFactor(0);
+            gameScene.chatCollapsedBox.setDepth(15);
+            gameScene.chatCollapsedBox.setInteractive();
+            gameScene.chatCollapsedBox.on('pointerdown', toggleChatCollapse);
+        }
+        gameScene.chatCollapsedBox.setVisible(true);
+        
+        // 접힌 상태 제목
+        if (!gameScene.chatCollapsedTitle) {
+            gameScene.chatCollapsedTitle = gameScene.add.text(
+                170,
+                gameScene.chatContainer.y - 125,
+                '💬 채팅 (클릭하여 펼치기)',
+                {
+                    fontSize: '12px',
+                    fill: '#ffffff',
+                    fontFamily: 'Arial'
+                }
+            );
+            gameScene.chatCollapsedTitle.setOrigin(0.5);
+            gameScene.chatCollapsedTitle.setScrollFactor(0);
+            gameScene.chatCollapsedTitle.setDepth(16);
+        }
+        gameScene.chatCollapsedTitle.setVisible(true);
+        gameScene.chatTitle.setVisible(false);
+        
+    } else {
+        // 펼쳐진 상태
+        gameScene.chatContainer.setVisible(true);
+        gameScene.chatTitle.setVisible(true);
+        
+        if (gameScene.chatCollapsedBox) {
+            gameScene.chatCollapsedBox.setVisible(false);
+        }
+        if (gameScene.chatCollapsedTitle) {
+            gameScene.chatCollapsedTitle.setVisible(false);
+        }
+        
+        // 채팅 입력창 업데이트
+        if (chatInputActive) {
+            gameScene.chatInputBox.setVisible(true);
+            gameScene.chatInputText.setVisible(true);
+            gameScene.chatInputText.setText('> ' + chatInputText + '|');
+            gameScene.chatInputBox.setStrokeStyle(2, 0x00ff00); // 활성화 시 초록색 테두리
+        } else {
+            gameScene.chatInputBox.setVisible(false);
+            gameScene.chatInputText.setVisible(false);
+            // 채팅 비활성화 시 숨겨진 input에서 포커스 제거
+            if (gameScene.hiddenInput) {
+                gameScene.hiddenInput.blur();
+            }
+        }
+        
+        // 채팅 메시지 업데이트
+        gameScene.chatMessageTexts.forEach(text => text.destroy());
+        gameScene.chatMessageTexts = [];
+        
+        chatMessages.forEach((msg, index) => {
+            // 메시지 위치를 위에서부터 아래로 쌓이도록 수정 (최신 메시지가 아래)
+            const y = gameScene.chatContainer.y - 220 + (index * 18); // 위에서부터 시작
+            const x = gameScene.chatContainer.x - 140;
+            
+            // 플레이어 색상 가져오기
+            const isLocalPlayer = msg.playerId === socket.id;
+            const playerColor = isLocalPlayer ? 0x00ff00 : assignPlayerColor(msg.playerId);
+            
+            // 색상 네모 생성
+            const colorSquare = gameScene.add.rectangle(
+                x + 8, // 왼쪽에서 8px 위치
+                y + 8, // 텍스트 중앙 높이
+                12,    // 12x12 네모
+                12,
+                playerColor
+            );
+            colorSquare.setStrokeStyle(1, 0xffffff, 0.8);
+            colorSquare.setScrollFactor(0);
+            colorSquare.setDepth(20);
+            colorSquare.setOrigin(0.5);
+            gameScene.chatMessageTexts.push(colorSquare);
+            
+            // 메시지 텍스트 (색상 네모 옆에 표시)
+            const messageText = gameScene.add.text(
+                x + 20, // 색상 네모 옆에 위치
+                y,
+                msg.message,
+                {
+                    fontSize: '11px',
+                    fill: '#ffffff',
+                    fontFamily: 'Arial',
+                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                    padding: { x: 4, y: 2 },
+                    wordWrap: { width: 260 } // 네모 공간만큼 줄임
+                }
+            );
+            messageText.setOrigin(0, 0);
+            messageText.setScrollFactor(0);
+            messageText.setDepth(20);
+            messageText.setVisible(true);
+            gameScene.chatMessageTexts.push(messageText);
+        });
+    }
+}
+
 // 게임 시작
 const game = new Phaser.Game(gameConfig);
+
+// 페이지 언로드 시 이벤트 리스너 정리
+window.addEventListener('beforeunload', () => {
+    if (gameScene && gameScene.hiddenInput) {
+        document.body.removeChild(gameScene.hiddenInput);
+    }
+});
 
 // 창 크기 변경 처리
 window.addEventListener('resize', () => {
