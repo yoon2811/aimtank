@@ -304,7 +304,7 @@ function updateSkillUI() {
         gameScene.skillIconBg.setStrokeStyle(3, 0xffff00);
         
         // 스킬명 색상 변경
-        gameScene.skillNameText.setFill('#ffff00');
+        gameScene.skillNameInBox.setFill('#ffff00');
         
         // 남은 시간 표시
         const remainingTime = Math.ceil(rapidFireSkill.duration / 1000);
@@ -312,19 +312,17 @@ function updateSkillUI() {
         gameScene.skillTimeText.setFill('#ffff00');
         gameScene.skillTimeText.setVisible(true);
         
-        // 화살표들을 빠르게 깜빡이게 (연사 효과)
-        gameScene.skillIcon.children.entries.forEach((arrow, index) => {
-            gameScene.tweens.killTweensOf(arrow);
-            gameScene.tweens.add({
-                targets: arrow,
-                alpha: 0.3,
-                scaleX: 1.2,
-                scaleY: 1.2,
-                duration: 80 + index * 30,
-                yoyo: true,
-                repeat: -1,
-                ease: 'Power2'
-            });
+        // 스킬명을 빠르게 깜빡이게 (연사 효과)
+        gameScene.tweens.killTweensOf(gameScene.skillNameInBox);
+        gameScene.tweens.add({
+            targets: gameScene.skillNameInBox,
+            alpha: 0.3,
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 100,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Power2'
         });
         
     } else if (rapidFireSkill.cooldownRemaining > 0) {
@@ -335,7 +333,7 @@ function updateSkillUI() {
         gameScene.skillIconBg.setStrokeStyle(2, 0x555555);
         
         // 스킬명 색상 변경
-        gameScene.skillNameText.setFill('#888888');
+        gameScene.skillNameInBox.setFill('#888888');
         
         // 쿨다운 시간 표시
         const cooldownTime = Math.ceil(rapidFireSkill.cooldownRemaining / 1000);
@@ -343,12 +341,10 @@ function updateSkillUI() {
         gameScene.skillTimeText.setFill('#ff0000');
         gameScene.skillTimeText.setVisible(true);
         
-        // 화살표들을 어둡고 작게
-        gameScene.skillIcon.children.entries.forEach(arrow => {
-            gameScene.tweens.killTweensOf(arrow);
-            arrow.setAlpha(0.3);
-            arrow.setScale(0.8);
-        });
+        // 스킬명을 어둡고 작게
+        gameScene.tweens.killTweensOf(gameScene.skillNameInBox);
+        gameScene.skillNameInBox.setAlpha(0.3);
+        gameScene.skillNameInBox.setScale(0.8);
         
         // 쿨다운 진행률 계산 (0~1) - 총 쿨다운 시간은 지속시간 + 쿨다운
         const totalCooldown = 20000; // 10초 지속 + 10초 쿨다운
@@ -384,28 +380,24 @@ function updateSkillUI() {
         gameScene.skillIconBg.setStrokeStyle(3, 0x00ff00);
         
         // 스킬명 색상 변경
-        gameScene.skillNameText.setFill('#00ff00');
+        gameScene.skillNameInBox.setFill('#00ff00');
         
         // 시간 텍스트 숨김
         gameScene.skillTimeText.setVisible(false);
         
-        // 화살표들을 정상 상태로
-        gameScene.skillIcon.children.entries.forEach(arrow => {
-            gameScene.tweens.killTweensOf(arrow);
-            arrow.setAlpha(1);
-            arrow.setScale(1);
-        });
+        // 스킬명을 정상 상태로
+        gameScene.tweens.killTweensOf(gameScene.skillNameInBox);
+        gameScene.skillNameInBox.setAlpha(1);
+        gameScene.skillNameInBox.setScale(1);
         
-        // 화살표들에 미묘한 반짝임
-        gameScene.skillIcon.children.entries.forEach((arrow, index) => {
-            gameScene.tweens.add({
-                targets: arrow,
-                alpha: 0.7,
-                duration: 1500 + index * 200,
-                yoyo: true,
-                repeat: -1,
-                ease: 'Sine.easeInOut'
-            });
+        // 스킬명에 미묘한 반짝임
+        gameScene.tweens.add({
+            targets: gameScene.skillNameInBox,
+            alpha: 0.7,
+            duration: 1500,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
         });
     }
     
@@ -426,7 +418,7 @@ function updateSkill2UI() {
         gameScene.skill2IconBg.setStrokeStyle(3, 0x00aaff);
         
         // 스킬명 색상 변경
-        gameScene.skill2NameText.setFill('#00aaff');
+        gameScene.skill2NameInBox.setFill('#00aaff');
         
         // 남은 시간 표시
         const remainingTime = Math.ceil(speedBoostSkill.duration / 1000);
@@ -434,19 +426,17 @@ function updateSkill2UI() {
         gameScene.skill2TimeText.setFill('#00aaff');
         gameScene.skill2TimeText.setVisible(true);
         
-        // 번개를 빠르게 깜빡이게 (가속 효과)
-        gameScene.skill2Icon.children.entries.forEach((lightning, index) => {
-            gameScene.tweens.killTweensOf(lightning);
-            gameScene.tweens.add({
-                targets: lightning,
-                alpha: 0.3,
-                scaleX: 1.3,
-                scaleY: 1.3,
-                duration: 100,
-                yoyo: true,
-                repeat: -1,
-                ease: 'Power2'
-            });
+        // 스킬명을 빠르게 깜빡이게 (가속 효과)
+        gameScene.tweens.killTweensOf(gameScene.skill2NameInBox);
+        gameScene.tweens.add({
+            targets: gameScene.skill2NameInBox,
+            alpha: 0.3,
+            scaleX: 1.3,
+            scaleY: 1.3,
+            duration: 100,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Power2'
         });
         
     } else if (speedBoostSkill.cooldownRemaining > 0) {
@@ -457,7 +447,7 @@ function updateSkill2UI() {
         gameScene.skill2IconBg.setStrokeStyle(2, 0x555555);
         
         // 스킬명 색상 변경
-        gameScene.skill2NameText.setFill('#888888');
+        gameScene.skill2NameInBox.setFill('#888888');
         
         // 쿨다운 시간 표시
         const cooldownTime = Math.ceil(speedBoostSkill.cooldownRemaining / 1000);
@@ -465,12 +455,10 @@ function updateSkill2UI() {
         gameScene.skill2TimeText.setFill('#ff0000');
         gameScene.skill2TimeText.setVisible(true);
         
-        // 번개를 어둡고 작게
-        gameScene.skill2Icon.children.entries.forEach(lightning => {
-            gameScene.tweens.killTweensOf(lightning);
-            lightning.setAlpha(0.3);
-            lightning.setScale(0.8);
-        });
+        // 스킬명을 어둡고 작게
+        gameScene.tweens.killTweensOf(gameScene.skill2NameInBox);
+        gameScene.skill2NameInBox.setAlpha(0.3);
+        gameScene.skill2NameInBox.setScale(0.8);
         
         // 쿨다운 진행률 계산 (0~1) - 총 쿨다운 시간은 지속시간 + 쿨다운
         const totalCooldown = 30000; // 10초 지속 + 20초 쿨다운
@@ -506,28 +494,24 @@ function updateSkill2UI() {
         gameScene.skill2IconBg.setStrokeStyle(3, 0x00aaff);
         
         // 스킬명 색상 변경
-        gameScene.skill2NameText.setFill('#00aaff');
+        gameScene.skill2NameInBox.setFill('#00aaff');
         
         // 시간 텍스트 숨김
         gameScene.skill2TimeText.setVisible(false);
         
-        // 번개를 정상 상태로
-        gameScene.skill2Icon.children.entries.forEach(lightning => {
-            gameScene.tweens.killTweensOf(lightning);
-            lightning.setAlpha(1);
-            lightning.setScale(1);
-        });
+        // 스킬명을 정상 상태로
+        gameScene.tweens.killTweensOf(gameScene.skill2NameInBox);
+        gameScene.skill2NameInBox.setAlpha(1);
+        gameScene.skill2NameInBox.setScale(1);
         
-        // 번개에 미묘한 반짝임
-        gameScene.skill2Icon.children.entries.forEach((lightning, index) => {
-            gameScene.tweens.add({
-                targets: lightning,
-                alpha: 0.7,
-                duration: 1800 + index * 300,
-                yoyo: true,
-                repeat: -1,
-                ease: 'Sine.easeInOut'
-            });
+        // 스킬명에 미묘한 반짝임
+        gameScene.tweens.add({
+            targets: gameScene.skill2NameInBox,
+            alpha: 0.7,
+            duration: 1800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
         });
     }
 }
@@ -834,26 +818,21 @@ function createUI() {
     gameScene.skillIconBg.setScrollFactor(0);
     gameScene.skillIconBg.setDepth(10);
     
-    // 스킬 아이콘 (연사를 나타내는 화살표들)
-    gameScene.skillIcon = gameScene.add.group();
-    
-    // 3개의 화살표로 연사 표현
-    for (let i = 0; i < 3; i++) {
-        const arrow = gameScene.add.polygon(
-            skillIconX + skillIconSize/2 + (i-1) * 8, 
-            skillIconY - skillIconSize/2, 
-            [
-                0, -8,   // 위
-                6, 0,    // 오른쪽
-                0, 8,    // 아래
-                -6, 0    // 왼쪽
-            ], 
-            0xffaa00
-        );
-        arrow.setScrollFactor(0);
-        arrow.setDepth(11);
-        gameScene.skillIcon.add(arrow);
-    }
+    // 스킬명을 사각형 가운데에 표시
+    gameScene.skillNameInBox = gameScene.add.text(
+        skillIconX + skillIconSize/2,
+        skillIconY - skillIconSize/2,
+        '연사',
+        {
+            fontSize: '16px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.skillNameInBox.setOrigin(0.5);
+    gameScene.skillNameInBox.setScrollFactor(0);
+    gameScene.skillNameInBox.setDepth(11);
     
     // 스킬 키 표시 (1)
     gameScene.skillKeyText = gameScene.add.text(
@@ -871,21 +850,7 @@ function createUI() {
     gameScene.skillKeyText.setScrollFactor(0);
     gameScene.skillKeyText.setDepth(11);
     
-    // 스킬명 표시 (아이콘 위)
-    gameScene.skillNameText = gameScene.add.text(
-        skillIconX + skillIconSize/2,
-        skillIconY - skillIconSize - 20,
-        '연사',
-        {
-            fontSize: '14px',
-            fill: '#ffffff',
-            fontFamily: 'Arial',
-            fontStyle: 'bold'
-        }
-    );
-    gameScene.skillNameText.setOrigin(0.5);
-    gameScene.skillNameText.setScrollFactor(0);
-    gameScene.skillNameText.setDepth(11);
+
     
     // 시간 표시 텍스트 (아이콘 중앙)
     gameScene.skillTimeText = gameScene.add.text(
@@ -943,26 +908,21 @@ function createUI() {
     gameScene.skill2IconBg.setScrollFactor(0);
     gameScene.skill2IconBg.setDepth(10);
     
-    // 2번 스킬 아이콘 (이동속도를 나타내는 번개 모양)
-    gameScene.skill2Icon = gameScene.add.group();
-    
-    // 번개 모양 (지그재그)
-    const lightning = gameScene.add.polygon(
-        skill2IconX + skillIconSize/2, 
-        skill2IconY - skillIconSize/2, 
-        [
-            0, -15,   // 위
-            5, -5,    // 오른쪽 위
-            -3, -2,   // 왼쪽 중간
-            8, 2,     // 오른쪽 중간
-            -2, 8,    // 왼쪽 아래
-            0, 15     // 아래
-        ], 
-        0x00aaff
+    // 2번 스킬명을 사각형 가운데에 표시
+    gameScene.skill2NameInBox = gameScene.add.text(
+        skill2IconX + skillIconSize/2,
+        skill2IconY - skillIconSize/2,
+        '가속',
+        {
+            fontSize: '16px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
     );
-    lightning.setScrollFactor(0);
-    lightning.setDepth(11);
-    gameScene.skill2Icon.add(lightning);
+    gameScene.skill2NameInBox.setOrigin(0.5);
+    gameScene.skill2NameInBox.setScrollFactor(0);
+    gameScene.skill2NameInBox.setDepth(11);
     
     // 2번 스킬 키 표시 (2)
     gameScene.skill2KeyText = gameScene.add.text(
@@ -980,21 +940,7 @@ function createUI() {
     gameScene.skill2KeyText.setScrollFactor(0);
     gameScene.skill2KeyText.setDepth(11);
     
-    // 2번 스킬명 표시 (아이콘 위)
-    gameScene.skill2NameText = gameScene.add.text(
-        skill2IconX + skillIconSize/2,
-        skill2IconY - skillIconSize - 20,
-        '가속',
-        {
-            fontSize: '14px',
-            fill: '#ffffff',
-            fontFamily: 'Arial',
-            fontStyle: 'bold'
-        }
-    );
-    gameScene.skill2NameText.setOrigin(0.5);
-    gameScene.skill2NameText.setScrollFactor(0);
-    gameScene.skill2NameText.setDepth(11);
+
     
     // 2번 스킬 시간 표시 텍스트 (아이콘 중앙)
     gameScene.skill2TimeText = gameScene.add.text(
