@@ -119,6 +119,11 @@ let skillKey2;
 let skillKey3;
 let skillKey4;
 let skillKey5;
+let skillKey6;
+let skillKey7;
+let skillKey8;
+let skillKey9;
+let skillKey0;
 
 // 채팅 관련 변수
 let chatMessages = [];
@@ -275,12 +280,19 @@ function create() {
     // 스페이스바 키 추가
     gameScene.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     
-    // 스킬 키 추가
+    // 스킬 키 추가 (1~5번만 스킬로 사용, 나머지는 채팅용)
     skillKey1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
     skillKey2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
     skillKey3 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
     skillKey4 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR);
     skillKey5 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE);
+    
+    // 나머지 숫자키들 (채팅에서만 사용)
+    skillKey6 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SIX);
+    skillKey7 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SEVEN);
+    skillKey8 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.EIGHT);
+    skillKey9 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NINE);
+    skillKey0 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
     
     // 채팅 키 추가
     enterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
@@ -344,8 +356,11 @@ function update(time, delta) {
 }
 
 function handleSkillInput() {
-    // 채팅 입력 중일 때는 스킬 사용 비활성화 (숫자키는 채팅에서 사용)
-    if (chatInputActive) return;
+    // 채팅 입력 중일 때는 모든 숫자키(0~9)가 스킬이 아닌 채팅 입력으로만 사용됨
+    if (chatInputActive) {
+        console.log('채팅 활성화 중 - 숫자키는 채팅 입력으로만 사용');
+        return;
+    }
     
     // 숫자 1키 - 연사 스킬
     if (Phaser.Input.Keyboard.JustDown(skillKey1)) {
@@ -371,6 +386,9 @@ function handleSkillInput() {
     if (Phaser.Input.Keyboard.JustDown(skillKey5)) {
         activateShieldSkill();
     }
+    
+    // 숫자 6~0키는 현재 스킬로 사용하지 않음 (채팅에서만 사용)
+    // 향후 추가 스킬이 필요하면 여기에 추가 가능
 }
 
 function updateSkills(delta) {
