@@ -24,7 +24,6 @@ let gameScene;
 let socket;
 let players = {};
 let bullets = new Map();
-let levelUpItems = new Map();
 let mapElements = [];
 let cursors;
 let isPaused = false;
@@ -78,11 +77,7 @@ let movementState = {
 };
 
 // UI 요소들
-let expBar;
-let levelText;
 let healthBar;
-let statsPanel;
-let isStatsVisible = false;
 
 // 미니맵 관련
 let minimap = null;
@@ -626,30 +621,10 @@ function updateGameState(state) {
         bullets.delete(id);
     });
     
-    // 레벨업 아이템 업데이트
-    const currentItemIds = new Set(levelUpItems.keys());
-    
-    state.levelUpItems.forEach(itemData => {
-        currentItemIds.delete(itemData.id);
-        
-        if (!levelUpItems.has(itemData.id)) {
-            createLevelUpItem(itemData);
-        }
-    });
-    
-    // 서버에서 사라진 아이템들 제거
-    currentItemIds.forEach(id => {
-        const item = levelUpItems.get(id);
-        if (item && item.graphic) {
-            item.graphic.destroy();
-        }
-        levelUpItems.delete(id);
-    });
-    
     // 로컬 플레이어 UI 업데이트
     const localPlayer = state.players[socket.id];
     if (localPlayer) {
-        updateUI(localPlayer.stats);
+        updateUI(localPlayer.stats, localPlayer.pvpStats);
         updateMinimap(localPlayer);
         
         // 서버의 스킬 상태를 클라이언트 UI용으로 동기화 (로직은 서버에서만 처리)
@@ -784,34 +759,7 @@ function updateBullet(bullet, data) {
     }
 }
 
-function createLevelUpItem(data) {
-    const item = {
-        ...data,
-        graphic: gameScene.add.polygon(data.x, data.y, [
-            0, -8,   // 위
-            8, 0,    // 오른쪽
-            0, 8,    // 아래
-            -8, 0    // 왼쪽
-        ], 0x00aaff)
-    };
-    
-    item.graphic.setStrokeStyle(2, 0x0088cc);
-    item.graphic.setDepth(0);
-    
-    // 반짝이는 효과
-    gameScene.tweens.add({
-        targets: item.graphic,
-        scaleX: 1.2,
-        scaleY: 1.2,
-        duration: 1000,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut'
-    });
-    
-    levelUpItems.set(data.id, item);
-    return item;
-}
+// PVP 게임이므로 레벨업 아이템 제거
 
 function updateRenderables() {
     // 활성화되지 않은 객체들 정리
@@ -826,60 +774,48 @@ function updateRenderables() {
 
 // UI 관련 함수들
 function createUI() {
-    // UI 패널
-    const uiPanel = gameScene.add.rectangle(15, 15, 250, 100, 0x000000, 0.7);
+    // UI 패널 (PVP용으로 크기 조정)
+    const uiPanel = gameScene.add.rectangle(15, 15, 280, 80, 0x000000, 0.7);
     uiPanel.setOrigin(0, 0);
     uiPanel.setScrollFactor(0);
     uiPanel.setStrokeStyle(1, 0x444444);
     uiPanel.setDepth(10);
     
-    // 레벨 텍스트
-    levelText = gameScene.add.text(25, 25, 'Lv.1', {
+    // PVP 통계 텍스트 (킬/데스)
+    gameScene.pvpStatsText = gameScene.add.text(25, 25, 'KILLS: 0 | DEATHS: 0', {
         fontSize: '16px',
         fill: '#ffff00',
         fontFamily: 'Arial',
         fontStyle: 'bold'
     });
-    levelText.setScrollFactor(0);
-    levelText.setDepth(10);
+    gameScene.pvpStatsText.setScrollFactor(0);
+    gameScene.pvpStatsText.setDepth(10);
     
     // 체력바 배경
-    const healthBarBg = gameScene.add.rectangle(80, 25, 170, 14, 0x333333);
+    const healthBarBg = gameScene.add.rectangle(25, 50, 200, 14, 0x333333);
     healthBarBg.setOrigin(0, 0);
     healthBarBg.setScrollFactor(0);
     healthBarBg.setStrokeStyle(1, 0x666666);
     healthBarBg.setDepth(10);
     
     // 체력바
-    healthBar = gameScene.add.rectangle(81, 26, 168, 12, 0x00ff00);
+    healthBar = gameScene.add.rectangle(26, 51, 198, 12, 0x00ff00);
     healthBar.setOrigin(0, 0);
     healthBar.setScrollFactor(0);
     healthBar.setDepth(10);
     
-    // 경험치바 배경
-    const expBarBg = gameScene.add.rectangle(80, 50, 170, 10, 0x333333);
-    expBarBg.setOrigin(0, 0);
-    expBarBg.setScrollFactor(0);
-    expBarBg.setStrokeStyle(1, 0x666666);
-    expBarBg.setDepth(10);
-    
-    // 경험치바
-    expBar = gameScene.add.rectangle(81, 51, 168, 8, 0x00aaff);
-    expBar.setOrigin(0, 0);
-    expBar.setScrollFactor(0);
-    expBar.setDepth(10);
-    
-    // 경험치 텍스트
-    gameScene.expText = gameScene.add.text(25, 70, 'EXP: 0/10', {
+    // 체력 텍스트
+    gameScene.healthText = gameScene.add.text(230, 50, '100/100', {
         fontSize: '12px',
-        fill: '#cccccc',
-        fontFamily: 'Arial'
+        fill: '#ffffff',
+        fontFamily: 'Arial',
+        fontStyle: 'bold'
     });
-    gameScene.expText.setScrollFactor(0);
-    gameScene.expText.setDepth(10);
+    gameScene.healthText.setScrollFactor(0);
+    gameScene.healthText.setDepth(10);
     
-    // 스탯 텍스트
-    gameScene.statsText = gameScene.add.text(25, 90, 'HP: 10/10 | ATK: 1 | SPD: 160', {
+    // 스탯 텍스트 (간소화)
+    gameScene.statsText = gameScene.add.text(25, 70, 'ATK: 10 | SPD: 160', {
         fontSize: '12px',
         fill: '#cccccc',
         fontFamily: 'Arial'
@@ -1096,11 +1032,11 @@ function createUI() {
         size: skillIconSize
     };
     
-    // 조작법 안내 (우하단)
+    // 조작법 안내 (우하단) - PVP 게임용
     const controlsText = gameScene.add.text(
         gameConfig.width - 20,
-        gameConfig.height - 100,
-        '조작법:\n화살표키: 이동\n스페이스: 발사\n숫자1: 연사 스킬\n숫자2: 가속 스킬',
+        gameConfig.height - 120,
+        'PVP TANK BATTLE\n\n조작법:\n화살표키: 이동\n스페이스: 발사\n숫자1: 연사 스킬\n숫자2: 가속 스킬',
         {
             fontSize: '12px',
             fill: '#cccccc',
@@ -1113,15 +1049,15 @@ function createUI() {
     controlsText.setDepth(10);
 }
 
-function updateUI(stats) {
-    if (!stats) return;
+function updateUI(stats, pvpStats) {
+    if (!stats || !pvpStats) return;
     
-    // 레벨 텍스트 업데이트
-    levelText.setText(`Lv.${stats.level}`);
+    // PVP 통계 업데이트 (킬/데스)
+    gameScene.pvpStatsText.setText(`KILLS: ${pvpStats.kills} | DEATHS: ${pvpStats.deaths}`);
     
     // 체력바 업데이트
     const healthPercent = stats.health / stats.maxHealth;
-    healthBar.displayWidth = 168 * healthPercent;
+    healthBar.displayWidth = 198 * healthPercent;
     
     // 체력에 따른 색상 변경
     if (healthPercent > 0.6) {
@@ -1132,15 +1068,11 @@ function updateUI(stats) {
         healthBar.setFillStyle(0xff0000); // 빨간색
     }
     
-    // 경험치바 업데이트
-    const expPercent = stats.exp / stats.expToNext;
-    expBar.displayWidth = 168 * expPercent;
+    // 체력 텍스트 업데이트
+    gameScene.healthText.setText(`${stats.health}/${stats.maxHealth}`);
     
-    // 경험치 텍스트 업데이트
-    gameScene.expText.setText(`EXP: ${stats.exp}/${stats.expToNext}`);
-    
-    // 스탯 텍스트 업데이트 (체력 정보 추가)
-    gameScene.statsText.setText(`HP: ${stats.health}/${stats.maxHealth} | ATK: ${stats.attackPower} | SPD: ${stats.moveSpeed}`);
+    // 스탯 텍스트 업데이트 (간소화)
+    gameScene.statsText.setText(`ATK: ${stats.attackPower} | SPD: ${stats.moveSpeed}`);
 }
 
 // 오디오 관련 함수들
@@ -1400,16 +1332,17 @@ function showSelfHitEffect(data) {
 
 // 킬 효과 표시 (상대방을 죽였을 때)
 function showKillEffect(data) {
-    // 킬 텍스트 (화면 중앙 상단)
+    // 킬 텍스트 (화면 중앙 상단) - PVP 정보 포함
     const killText = gameScene.add.text(
         gameConfig.width / 2,
         gameConfig.height / 2 - 100,
-        'KILL!',
+        `KILL!\n킬 수: ${data.attackerKills}`,
         {
             fontSize: '36px',
             fill: '#ffff00',
             fontFamily: 'Arial',
-            fontStyle: 'bold'
+            fontStyle: 'bold',
+            align: 'center'
         }
     );
     killText.setOrigin(0.5);
@@ -1455,7 +1388,7 @@ function showKillEffect(data) {
     // 킬 사운드 재생
     playKillSound();
     
-    console.log(`킬! 상대방을 처치했습니다.`);
+    console.log(`킬! 상대방을 처치했습니다. 총 킬 수: ${data.attackerKills}`);
 }
 
 // 적중 확인 사운드

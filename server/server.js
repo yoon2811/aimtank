@@ -42,24 +42,13 @@ class MapElement {
     }
 }
 
-class LevelUpItem {
-    constructor(x, y) {
-        this.id = Date.now() + Math.random();
-        this.x = x;
-        this.y = y;
-        this.type = 'exp';
-        this.value = 1;
-        this.active = true;
-    }
-}
+// PVP 게임이므로 레벨업 아이템 클래스 제거
 
 // 게임 상태
 const gameState = {
     players: {},
     bullets: [],
-    mapElements: [],
-    levelUpItems: [],
-    gameMap: null
+    mapElements: []
 };
 
 // 맵 생성 함수
@@ -85,28 +74,7 @@ function generateMap() {
     return mapElements;
 }
 
-// 레벨업 아이템 생성
-function generateLevelUpItems() {
-    const items = [];
-    
-    // 맵 크기에 비례하여 아이템 수 조정 (2000x2000 맵에 50개)
-    const mapArea = GAME_CONFIG.WORLD_WIDTH * GAME_CONFIG.WORLD_HEIGHT;
-    const baseArea = 4000 * 4000; // 기준 맵 크기
-    const baseItemCount = 100; // 기준 아이템 수
-    const itemCount = Math.floor((mapArea / baseArea) * baseItemCount);
-    
-    console.log(`맵 크기: ${GAME_CONFIG.WORLD_WIDTH}x${GAME_CONFIG.WORLD_HEIGHT}`);
-    console.log(`아이템 수: ${itemCount}개`);
-    
-    for (let i = 0; i < itemCount; i++) {
-        const x = Math.random() * (GAME_CONFIG.WORLD_WIDTH - 200) + 100;
-        const y = Math.random() * (GAME_CONFIG.WORLD_HEIGHT - 200) + 100;
-        
-        items.push(new LevelUpItem(x, y));
-    }
-    
-    return items;
-}
+// PVP 게임이므로 레벨업 아이템 제거
 
 // 플레이어 클래스
 class Player {
@@ -118,14 +86,17 @@ class Player {
         this.movement = { left: false, right: false, up: false, down: false };
         this.isFiring = false; // 발사 입력 상태
         this.stats = {
-            level: 1,
-            exp: 0,
-            expToNext: 10,
-            health: 10,
-            maxHealth: 10,
-            attackPower: 1,
-            fireRate: 1000,
+            health: 100,
+            maxHealth: 100,
+            attackPower: 10,
+            fireRate: 300,
             moveSpeed: GAME_CONFIG.PLAYER_SPEED
+        };
+        
+        // PVP 통계
+        this.pvpStats = {
+            kills: 0,
+            deaths: 0
         };
         this.lastFired = 0;
         
@@ -313,58 +284,15 @@ class Player {
         return this.stats.moveSpeed;
     }
 
-    // 레벨업 아이템 충돌 체크
-    checkItemCollision() {
-        const playerRadius = 30;
-        
-        gameState.levelUpItems.forEach((item, index) => {
-            if (!item.active) return;
-            
-            const distance = Math.sqrt(
-                Math.pow(this.x - item.x, 2) + 
-                Math.pow(this.y - item.y, 2)
-            );
-            
-            if (distance < playerRadius) {
-                // 아이템 획득
-                item.active = false;
-                this.gainExp(item.value);
-                
-                // 아이템 제거
-                gameState.levelUpItems.splice(index, 1);
-                
-                // 새 아이템 생성 (맵에 항상 일정 수량 유지)
-                if (gameState.levelUpItems.length < 50) {
-                    const x = Math.random() * (GAME_CONFIG.WORLD_WIDTH - 200) + 100;
-                    const y = Math.random() * (GAME_CONFIG.WORLD_HEIGHT - 200) + 100;
-                    gameState.levelUpItems.push(new LevelUpItem(x, y));
-                }
-            }
-        });
+    // PVP 킬 처리
+    addKill() {
+        this.pvpStats.kills++;
+        console.log(`플레이어 ${this.id} 킬 수: ${this.pvpStats.kills}`);
     }
 
-    gainExp(amount) {
-        this.stats.exp += amount;
-        
-        // 레벨업 체크
-        if (this.stats.exp >= this.stats.expToNext) {
-            this.levelUp();
-        }
-    }
-
-    levelUp() {
-        this.stats.level++;
-        this.stats.exp -= this.stats.expToNext;
-        this.stats.expToNext = Math.ceil(this.stats.expToNext * 1.5);
-        
-        // 자동 스탯 증가 (체력 증가량도 조정)
-        this.stats.maxHealth += 5;
-        this.stats.health = Math.min(this.stats.health + 5, this.stats.maxHealth);
-        this.stats.attackPower += 1;
-        this.stats.fireRate = Math.max(200, this.stats.fireRate * 0.9);
-        this.stats.moveSpeed += 10;
-        
-        console.log(`플레이어 ${this.id} 레벨업! 레벨: ${this.stats.level}`);
+    addDeath() {
+        this.pvpStats.deaths++;
+        console.log(`플레이어 ${this.id} 데스 수: ${this.pvpStats.deaths}`);
     }
 
     takeDamage(damage, attackerId) {
@@ -385,12 +313,23 @@ class Player {
             this.stats.health = 0;
             console.log(`플레이어 ${this.id}가 ${attackerId}에게 사망했습니다.`);
             
+            // PVP 통계 업데이트
+            this.addDeath(); // 사망자 데스 카운트 증가
+            
+            // 공격자 킬 카운트 증가
+            const attacker = gameState.players[attackerId];
+            if (attacker) {
+                attacker.addKill();
+            }
+            
             // 모든 플레이어에게 킬 이벤트 브로드캐스트
             io.emit('player_killed_broadcast', {
                 attackerId: attackerId,
                 targetId: this.id,
                 targetX: this.x,
-                targetY: this.y
+                targetY: this.y,
+                attackerKills: attacker ? attacker.pvpStats.kills : 0,
+                targetDeaths: this.pvpStats.deaths
             });
             
             this.respawn();
@@ -399,9 +338,13 @@ class Player {
 
     respawn() {
         // 리스폰 시 체력 회복 및 위치 초기화
+        // 리스폰 시 체력 완전 회복
         this.stats.health = this.stats.maxHealth;
+        
+        // 랜덤 위치에 리스폰
         this.x = GAME_CONFIG.WORLD_WIDTH / 2 + (Math.random() - 0.5) * 200;
         this.y = GAME_CONFIG.WORLD_HEIGHT / 2 + (Math.random() - 0.5) * 200;
+        
         console.log(`플레이어 ${this.id}가 리스폰했습니다.`);
         
         // 모든 플레이어에게 리스폰 이벤트 브로드캐스트
@@ -462,11 +405,9 @@ class Bullet {
 // 게임 초기화
 function initializeGame() {
     gameState.mapElements = generateMap();
-    gameState.levelUpItems = generateLevelUpItems();
     
-    console.log('게임 맵 초기화 완료');
+    console.log('PVP 게임 맵 초기화 완료');
     console.log(`맵 요소: ${gameState.mapElements.length}개`);
-    console.log(`레벨업 아이템: ${gameState.levelUpItems.length}개`);
 }
 
 // 소켓 연결 처리
@@ -547,7 +488,6 @@ const gameLoop = () => {
     // 플레이어 업데이트
     Object.values(gameState.players).forEach(player => {
         player.update(deltaTime);
-        player.checkItemCollision();
     });
 
     // 총알 업데이트 및 충돌 검사
@@ -566,19 +506,19 @@ const gameLoop = () => {
         return true; // 총알 유지
     });
 
-    // 게임 상태 브로드캐스트 (스킬 정보 포함)
-    const playersWithSkills = {};
+    // 게임 상태 브로드캐스트 (스킬 정보와 PVP 통계 포함)
+    const playersWithData = {};
     Object.entries(gameState.players).forEach(([id, player]) => {
-        playersWithSkills[id] = {
+        playersWithData[id] = {
             ...player,
-            skills: player.skills // 스킬 정보 포함
+            skills: player.skills,     // 스킬 정보 포함
+            pvpStats: player.pvpStats  // PVP 통계 포함
         };
     });
 
     io.emit('game_state', {
-        players: playersWithSkills,
-        bullets: gameState.bullets,
-        levelUpItems: gameState.levelUpItems
+        players: playersWithData,
+        bullets: gameState.bullets
     });
 };
 
