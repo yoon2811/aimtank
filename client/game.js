@@ -939,7 +939,7 @@ function createUI() {
     uiPanel.setDepth(10);
     
     // PVP 통계 텍스트 (킬/데스)
-    gameScene.pvpStatsText = gameScene.add.text(25, 25, 'KILLS: 0 | DEATHS: 0', {
+    gameScene.pvpStatsText = gameScene.add.text(25, 25, 'KILL: 0 | DEATH: 0', {
         fontSize: '16px',
         fill: '#ffff00',
         fontFamily: 'Arial',
@@ -1226,10 +1226,10 @@ function createUI() {
     // 조작법 안내 (우하단) - PVP 게임용
     const controlsText = gameScene.add.text(
         gameConfig.width - 20,
-        gameConfig.height - 140,
-        'PVP TANK BATTLE\n\n조작법:\n화살표키 또는 WASD: 이동\n스페이스: 발사\n숫자1: 연사 스킬\n숫자2: 가속 스킬\n숫자3: 회복 스킬 (체력 30 회복)',
+        gameConfig.height - 100,
+        '조작법:\n화살표키 또는 WASD: 이동\n스페이스: 발사\n숫자1: 연사 스킬\n숫자2: 가속 스킬\n숫자3: 회복 스킬',
         {
-            fontSize: '12px',
+            fontSize: '11px',
             fill: '#cccccc',
             fontFamily: 'Arial',
             align: 'right'
@@ -1244,7 +1244,7 @@ function updateUI(stats, pvpStats) {
     if (!stats || !pvpStats) return;
     
     // PVP 통계 업데이트 (킬/데스)
-    gameScene.pvpStatsText.setText(`KILLS: ${pvpStats.kills} | DEATHS: ${pvpStats.deaths}`);
+    gameScene.pvpStatsText.setText(`KILL: ${pvpStats.kills} | DEATH: ${pvpStats.deaths}`);
     
     // 체력바 업데이트
     const healthPercent = stats.health / stats.maxHealth;
@@ -1350,7 +1350,7 @@ function createScoreboard() {
     gameScene.scoreboardKillHeader = gameScene.add.text(
         scoreboardX + 180,
         scoreboardY + headerHeight + 15,
-        'KILLS',
+        'KILL',
         {
             fontSize: '12px',
             fill: '#ffffff',
@@ -1365,7 +1365,7 @@ function createScoreboard() {
     gameScene.scoreboardDeathHeader = gameScene.add.text(
         scoreboardX + 230,
         scoreboardY + headerHeight + 15,
-        'DEATHS',
+        'DEATH',
         {
             fontSize: '12px',
             fill: '#ffffff',
