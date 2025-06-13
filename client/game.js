@@ -302,6 +302,7 @@ function updateGameState(state) {
         if (!state.players[id]) {
             if (players[id].graphic) players[id].graphic.destroy();
             if (players[id].barrel) players[id].barrel.destroy();
+            if (players[id].nameText) players[id].nameText.destroy();
             releasePlayerColor(id); // 색상 해제
             delete players[id];
         }
@@ -362,10 +363,24 @@ function createPlayer(id, data) {
     const isLocalPlayer = id === socket.id;
     const color = isLocalPlayer ? 0x00ff00 : assignPlayerColor(id);
     
+    // 플레이어 아이디 텍스트 생성 (처음 8자만 표시)
+    const displayId = id.length > 8 ? id.substring(0, 8) + '...' : id;
+    const nameText = gameScene.add.text(data.x, data.y - 35, displayId, {
+        fontSize: '12px',
+        fill: '#ffffff',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    });
+    nameText.setOrigin(0.5);
+    nameText.setDepth(3);
+    
     const player = {
         id,
         graphic: gameScene.add.rectangle(data.x, data.y, 40, 40, color),
         barrel: gameScene.add.rectangle(data.x + 15, data.y, 30, 6, color),
+        nameText: nameText,
         data
     };
     
@@ -391,6 +406,12 @@ function updatePlayer(player, data) {
     const lerpFactor = 0.3;
     player.graphic.x += (data.x - player.graphic.x) * lerpFactor;
     player.graphic.y += (data.y - player.graphic.y) * lerpFactor;
+    
+    // 플레이어 이름 텍스트 위치 업데이트
+    if (player.nameText) {
+        player.nameText.x = player.graphic.x;
+        player.nameText.y = player.graphic.y - 35;
+    }
     
     // 포신 위치 및 방향 업데이트
     const angle = Math.atan2(data.direction.y, data.direction.x);
@@ -456,6 +477,7 @@ function updateRenderables() {
     Object.values(players).forEach(player => {
         if (!player.graphic.active) {
             if (player.barrel) player.barrel.destroy();
+            if (player.nameText) player.nameText.destroy();
             delete players[player.id];
         }
     });
