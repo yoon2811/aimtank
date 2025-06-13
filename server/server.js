@@ -28,6 +28,10 @@ const GAME_CONFIG = {
             DURATION: 10000,        // 10초
             COOLDOWN: 10000,        // 10초
             SPEED_MULTIPLIER: 3     // 3배 빠르게
+        },
+        HEAL: {
+            HEAL_AMOUNT: 30,        // 30 체력 회복
+            COOLDOWN: 60000         // 1분 쿨다운
         }
     }
 };
@@ -108,6 +112,11 @@ class Player {
                 cooldownEndTime: 0
             },
             speedBoost: {
+                isActive: false,
+                endTime: 0,
+                cooldownEndTime: 0
+            },
+            heal: {
                 isActive: false,
                 endTime: 0,
                 cooldownEndTime: 0
@@ -288,6 +297,48 @@ class Player {
         this.skills.speedBoost.cooldownEndTime = now + skillConfig.DURATION + skillConfig.COOLDOWN;
         
         console.log(`플레이어 ${this.id}의 가속 스킬 활성화`);
+        return true;
+    }
+
+    activateHealSkill() {
+        const now = Date.now();
+        const skillConfig = GAME_CONFIG.SKILLS.HEAL;
+        
+        // 쿨다운 체크
+        if (now < this.skills.heal.cooldownEndTime) {
+            return false; // 쿨다운 중
+        }
+        
+        // 체력이 이미 최대인 경우 사용 불가
+        if (this.stats.health >= this.stats.maxHealth) {
+            return false; // 체력이 이미 최대
+        }
+        
+        // 체력 회복
+        const healAmount = skillConfig.HEAL_AMOUNT;
+        const oldHealth = this.stats.health;
+        this.stats.health = Math.min(this.stats.maxHealth, this.stats.health + healAmount);
+        const actualHealAmount = this.stats.health - oldHealth;
+        
+        // 스킬 쿨다운 설정 (즉시 효과이므로 지속시간은 없음)
+        this.skills.heal.isActive = false;
+        this.skills.heal.endTime = now;
+        this.skills.heal.cooldownEndTime = now + skillConfig.COOLDOWN;
+        
+        console.log(`플레이어 ${this.id}의 회복 스킬 사용: ${actualHealAmount} 체력 회복 (${oldHealth} -> ${this.stats.health})`);
+        
+        // 회복 효과 브로드캐스트
+        const socket = [...io.sockets.sockets.values()].find(s => s.id === this.id);
+        if (socket) {
+            io.emit('heal_effect', {
+                playerId: this.id,
+                x: this.x,
+                y: this.y,
+                healAmount: actualHealAmount,
+                newHealth: this.stats.health
+            });
+        }
+        
         return true;
     }
 
@@ -495,6 +546,14 @@ io.on('connection', (socket) => {
                 skillType: 'speed_boost',
                 success: success,
                 skillData: player.skills.speedBoost
+            });
+        } else if (skillType === 'heal') {
+            const success = player.activateHealSkill();
+            // 클라이언트에 스킬 상태 전송
+            socket.emit('skill_result', {
+                skillType: 'heal',
+                success: success,
+                skillData: player.skills.heal
             });
         }
     });

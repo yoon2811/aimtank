@@ -98,8 +98,14 @@ let speedBoostSkill = {
     cooldownRemaining: 0,
     duration: 0
 };
+let healSkill = {
+    isActive: false,
+    cooldownRemaining: 0,
+    duration: 0
+};
 let skillKey1;
 let skillKey2;
+let skillKey3;
 
 function preload() {
     // 이미지 없이 도형으로만 구현
@@ -174,6 +180,13 @@ function create() {
             } else {
                 console.log('가속 스킬 쿨다운 중입니다.');
             }
+        } else if (data.skillType === 'heal') {
+            if (data.success) {
+                console.log('회복 스킬 사용! 체력 30 회복!');
+                playHealActivationSound();
+            } else {
+                console.log('회복 스킬 쿨다운 중입니다.');
+            }
         }
     });
     
@@ -185,12 +198,20 @@ function create() {
         } else if (data.skillType === 'speed_boost') {
             console.log('가속 스킬 종료');
             playSkillDeactivationSound();
+        } else if (data.skillType === 'heal') {
+            console.log('회복 스킬 종료');
+            playSkillDeactivationSound();
         }
     });
     
     // 발사 사운드 이벤트 (서버에서 발사가 실제로 일어났을 때만 재생)
     socket.on('fire_sound', () => {
         playFireSound();
+    });
+    
+    // 힐 효과 이벤트
+    socket.on('heal_effect', (data) => {
+        showHealEffect(data);
     });
     
     // 오디오 초기화
@@ -202,12 +223,16 @@ function create() {
     // 키보드 입력 설정
     cursors = this.input.keyboard.createCursorKeys();
     
+    // WASD 키 추가
+    gameScene.wasdKeys = this.input.keyboard.addKeys('W,S,A,D');
+    
     // 스페이스바 키 추가
     gameScene.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     
     // 스킬 키 추가
     skillKey1 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
     skillKey2 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
+    skillKey3 = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
 }
 
 function createMapFromServer(data) {
@@ -273,6 +298,11 @@ function handleSkillInput() {
     // 숫자 2키 - 가속 스킬
     if (Phaser.Input.Keyboard.JustDown(skillKey2)) {
         activateSpeedBoostSkill();
+    }
+    
+    // 숫자 3키 - 회복 스킬
+    if (Phaser.Input.Keyboard.JustDown(skillKey3)) {
+        activateHealSkill();
     }
 }
 
@@ -403,6 +433,9 @@ function updateSkillUI() {
     
     // === 2번 스킬 UI 업데이트 ===
     updateSkill2UI();
+    
+    // === 3번 스킬 UI 업데이트 ===
+    updateSkill3UI();
 }
 
 function updateSkill2UI() {
@@ -516,6 +549,122 @@ function updateSkill2UI() {
     }
 }
 
+function updateSkill3UI() {
+    if (!gameScene.skill3IconPos) return;
+    
+    const pos = gameScene.skill3IconPos;
+    
+    // 3번 스킬 그래픽 초기화
+    if (gameScene.skill3CooldownCircle) {
+        gameScene.skill3CooldownCircle.clear();
+    }
+    
+    if (healSkill.isActive) {
+        // 스킬 활성화 중 - 초록색 배경과 남은 시간 표시
+        
+        // 아이콘 배경을 밝은 초록색으로
+        gameScene.skill3IconBg.setFillStyle(0x003300);
+        gameScene.skill3IconBg.setStrokeStyle(3, 0x00ff00);
+        
+        // 스킬명 색상 변경
+        gameScene.skill3NameInBox.setFill('#00ff00');
+        
+        // 남은 시간 표시
+        const remainingTime = Math.ceil(healSkill.duration / 1000);
+        gameScene.skill3TimeText.setText(remainingTime.toString());
+        gameScene.skill3TimeText.setFill('#00ff00');
+        gameScene.skill3TimeText.setVisible(true);
+        
+        // 스킬명을 빠르게 깜빡이게 (회복 효과)
+        gameScene.tweens.killTweensOf(gameScene.skill3NameInBox);
+        gameScene.tweens.add({
+            targets: gameScene.skill3NameInBox,
+            alpha: 0.3,
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 200,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Power2'
+        });
+        
+    } else if (healSkill.cooldownRemaining > 0) {
+        // 쿨다운 중 - 회색 배경과 쿨다운 시간 표시
+        
+        // 아이콘 배경을 어둡게
+        gameScene.skill3IconBg.setFillStyle(0x222222);
+        gameScene.skill3IconBg.setStrokeStyle(2, 0x555555);
+        
+        // 스킬명 색상 변경
+        gameScene.skill3NameInBox.setFill('#888888');
+        
+        // 쿨다운 시간 표시
+        const cooldownTime = Math.ceil(healSkill.cooldownRemaining / 1000);
+        gameScene.skill3TimeText.setText(cooldownTime.toString());
+        gameScene.skill3TimeText.setFill('#ff0000');
+        gameScene.skill3TimeText.setVisible(true);
+        
+        // 스킬명을 어둡고 작게
+        gameScene.tweens.killTweensOf(gameScene.skill3NameInBox);
+        gameScene.skill3NameInBox.setAlpha(0.3);
+        gameScene.skill3NameInBox.setScale(0.8);
+        
+        // 쿨다운 진행률 계산 (0~1) - 총 쿨다운 시간은 15초
+        const totalCooldown = 15000; // 15초 쿨다운
+        const progress = 1 - (healSkill.cooldownRemaining / totalCooldown);
+        
+        // 배경 원 (어두운 회색)
+        gameScene.skill3CooldownCircle.fillStyle(0x000000, 0.6);
+        gameScene.skill3CooldownCircle.fillCircle(pos.x, pos.y, pos.size/2 - 2);
+        
+        // 진행률 원호 (빨간색에서 초록색으로 변화)
+        const startAngle = -Math.PI / 2; // 12시 방향부터 시작
+        const endAngle = startAngle + (progress * Math.PI * 2);
+        
+        // 진행률에 따른 색상 변화 (빨간색 -> 노란색 -> 초록색)
+        let color = 0xff0000; // 빨간색
+        if (progress > 0.5) {
+            color = 0xffaa00; // 노란색
+        }
+        if (progress > 0.8) {
+            color = 0x00ff00; // 초록색
+        }
+        
+        gameScene.skill3CooldownCircle.lineStyle(3, color, 0.7);
+        gameScene.skill3CooldownCircle.beginPath();
+        gameScene.skill3CooldownCircle.arc(pos.x, pos.y, pos.size/2 - 4, startAngle, endAngle);
+        gameScene.skill3CooldownCircle.strokePath();
+        
+    } else {
+        // 사용 가능 - 초록색 배경과 준비 상태
+        
+        // 아이콘 배경을 정상으로
+        gameScene.skill3IconBg.setFillStyle(0x113300);
+        gameScene.skill3IconBg.setStrokeStyle(3, 0x00ff00);
+        
+        // 스킬명 색상 변경
+        gameScene.skill3NameInBox.setFill('#00ff00');
+        
+        // 시간 텍스트 숨김
+        gameScene.skill3TimeText.setVisible(false);
+        
+        // 스킬명을 정상 상태로
+        gameScene.tweens.killTweensOf(gameScene.skill3NameInBox);
+        gameScene.skill3NameInBox.setAlpha(1);
+        gameScene.skill3NameInBox.setScale(1);
+        
+        // 스킬명에 미묘한 반짝임
+        gameScene.tweens.add({
+            targets: gameScene.skill3NameInBox,
+            alpha: 0.7,
+            duration: 2000,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+    }
+}
+
 function activateRapidFireSkill() {
     // 클라이언트는 스킬 사용 요청만 전송 (모든 로직은 서버에서 처리)
     socket.emit('use_skill', 'rapid_fire');
@@ -524,6 +673,11 @@ function activateRapidFireSkill() {
 function activateSpeedBoostSkill() {
     // 클라이언트는 스킬 사용 요청만 전송 (모든 로직은 서버에서 처리)
     socket.emit('use_skill', 'speed_boost');
+}
+
+function activateHealSkill() {
+    // 클라이언트는 스킬 사용 요청만 전송 (모든 로직은 서버에서 처리)
+    socket.emit('use_skill', 'heal');
 }
 
 
@@ -542,10 +696,10 @@ function handleFiring() {
 function handleMovement() {
     // 이전 상태와 비교하여 변경된 경우만 전송
     const newState = {
-        left: cursors.left.isDown,
-        right: cursors.right.isDown,
-        up: cursors.up.isDown,
-        down: cursors.down.isDown
+        left: cursors.left.isDown || gameScene.wasdKeys.A.isDown,
+        right: cursors.right.isDown || gameScene.wasdKeys.D.isDown,
+        up: cursors.up.isDown || gameScene.wasdKeys.W.isDown,
+        down: cursors.down.isDown || gameScene.wasdKeys.S.isDown
     };
     
     // 각 방향별로 상태 변경 체크
@@ -642,6 +796,22 @@ function updateGameState(state) {
             }
             
             speedBoostSkill.cooldownRemaining = Math.max(0, serverSkill.cooldownEndTime - now);
+        }
+        
+        // 3번 스킬 상태 UI 동기화
+        if (localPlayer.skills && localPlayer.skills.heal) {
+            const serverSkill = localPlayer.skills.heal;
+            const now = Date.now();
+            
+            healSkill.isActive = serverSkill.isActive;
+            
+            if (serverSkill.isActive) {
+                healSkill.duration = Math.max(0, serverSkill.endTime - now);
+            } else {
+                healSkill.duration = 0;
+            }
+            
+            healSkill.cooldownRemaining = Math.max(0, serverSkill.cooldownEndTime - now);
         }
     }
     
@@ -972,14 +1142,92 @@ function createUI() {
         size: skillIconSize
     };
     
+    // === 3번 스킬 UI (2번 스킬 오른쪽) ===
+    const skill3IconX = skill2IconX + skillIconSize + 20;
+    const skill3IconY = skillIconY;
+    
+    // 3번 스킬 아이콘 배경
+    gameScene.skill3IconBg = gameScene.add.rectangle(
+        skill3IconX + skillIconSize/2, 
+        skill3IconY - skillIconSize/2, 
+        skillIconSize, 
+        skillIconSize, 
+        0x333333
+    );
+    gameScene.skill3IconBg.setStrokeStyle(2, 0x666666);
+    gameScene.skill3IconBg.setScrollFactor(0);
+    gameScene.skill3IconBg.setDepth(10);
+    
+    // 3번 스킬명을 사각형 가운데에 표시
+    gameScene.skill3NameInBox = gameScene.add.text(
+        skill3IconX + skillIconSize/2,
+        skill3IconY - skillIconSize/2,
+        '회복',
+        {
+            fontSize: '16px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.skill3NameInBox.setOrigin(0.5);
+    gameScene.skill3NameInBox.setScrollFactor(0);
+    gameScene.skill3NameInBox.setDepth(11);
+    
+    // 3번 스킬 키 표시 (3)
+    gameScene.skill3KeyText = gameScene.add.text(
+        skill3IconX + skillIconSize/2,
+        skill3IconY - skillIconSize + 8,
+        '3',
+        {
+            fontSize: '12px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.skill3KeyText.setOrigin(0.5);
+    gameScene.skill3KeyText.setScrollFactor(0);
+    gameScene.skill3KeyText.setDepth(11);
+    
+    // 3번 스킬 시간 표시 텍스트 (아이콘 중앙)
+    gameScene.skill3TimeText = gameScene.add.text(
+        skill3IconX + skillIconSize/2,
+        skill3IconY - skillIconSize/2 + 15,
+        '',
+        {
+            fontSize: '16px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        }
+    );
+    gameScene.skill3TimeText.setOrigin(0.5);
+    gameScene.skill3TimeText.setScrollFactor(0);
+    gameScene.skill3TimeText.setDepth(14);
+    
+    // 3번 스킬 쿨다운 진행률 표시용 원형 오버레이
+    gameScene.skill3CooldownCircle = gameScene.add.graphics();
+    gameScene.skill3CooldownCircle.setScrollFactor(0);
+    gameScene.skill3CooldownCircle.setDepth(12);
+    
+    // 3번 스킬 아이콘 위치 저장
+    gameScene.skill3IconPos = {
+        x: skill3IconX + skillIconSize/2,
+        y: skill3IconY - skillIconSize/2,
+        size: skillIconSize
+    };
+    
     // === 스코어보드 UI (우상단) ===
     createScoreboard();
     
     // 조작법 안내 (우하단) - PVP 게임용
     const controlsText = gameScene.add.text(
         gameConfig.width - 20,
-        gameConfig.height - 120,
-        'PVP TANK BATTLE\n\n조작법:\n화살표키: 이동\n스페이스: 발사\n숫자1: 연사 스킬\n숫자2: 가속 스킬',
+        gameConfig.height - 140,
+        'PVP TANK BATTLE\n\n조작법:\n화살표키 또는 WASD: 이동\n스페이스: 발사\n숫자1: 연사 스킬\n숫자2: 가속 스킬\n숫자3: 회복 스킬 (체력 30 회복)',
         {
             fontSize: '12px',
             fill: '#cccccc',
@@ -1054,7 +1302,7 @@ function createScoreboard() {
     gameScene.scoreboardTitle.setDepth(11);
     gameScene.scoreboardTitle.setInteractive({ useHandCursor: true });
     
-    // 스코어보드 본문 (접힐 수 있는 부분)
+    // 스코어보드 본문 (접회복 수 있는 부분)
     const bodyHeight = 180;
     gameScene.scoreboardBody = gameScene.add.rectangle(
         scoreboardX + scoreboardWidth/2,
@@ -1667,6 +1915,32 @@ function playSpeedBoostActivationSound() {
     }
 }
 
+// 회복 스킬 활성화 사운드
+function playHealActivationSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(500, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
+        oscillator.frequency.exponentialRampToValueAtTime(1000, audioContext.currentTime + 0.3);
+        
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+        console.log('회복 스킬 활성화 사운드 재생 오류:', error);
+    }
+}
+
 // 스킬 비활성화 사운드
 function playSkillDeactivationSound() {
     if (!audioContext || !isSoundEnabled) return;
@@ -1806,6 +2080,75 @@ function showOtherPlayerRespawnEffect(data) {
             respawnText.destroy();
         }
     });
+}
+
+// 힐 효과 표시
+function showHealEffect(data) {
+    // 힐 위치에 초록색 원형 마커
+    const healMarker = gameScene.add.circle(data.x, data.y, 20, 0x00ff00, 0.8);
+    healMarker.setDepth(500);
+    
+    // 힐 마커 애니메이션
+    gameScene.tweens.add({
+        targets: healMarker,
+        scaleX: 2.5,
+        scaleY: 2.5,
+        alpha: 0,
+        duration: 800,
+        ease: 'Power2',
+        onComplete: () => {
+            healMarker.destroy();
+        }
+    });
+    
+    // 힐량 텍스트 표시
+    const healText = gameScene.add.text(data.x, data.y - 30, `+${data.healAmount}`, {
+        fontSize: '20px',
+        fill: '#00ff00',
+        fontWeight: 'bold',
+        stroke: '#000000',
+        strokeThickness: 2
+    }).setDepth(600);
+    
+    // 힐 텍스트 애니메이션
+    gameScene.tweens.add({
+        targets: healText,
+        y: data.y - 60,
+        alpha: 0,
+        duration: 1000,
+        ease: 'Power2',
+        onComplete: () => {
+            healText.destroy();
+        }
+    });
+    
+    // 자신이 힐한 경우 추가 효과
+    if (data.playerId === socket.id) {
+        // 화면 초록색 플래시 효과
+        const flashOverlay = gameScene.add.rectangle(
+            gameConfig.width / 2,
+            gameConfig.height / 2,
+            gameConfig.width,
+            gameConfig.height,
+            0x00ff00,
+            0.2
+        );
+        flashOverlay.setScrollFactor(0);
+        flashOverlay.setDepth(20);
+        
+        // 플래시 효과 애니메이션
+        gameScene.tweens.add({
+            targets: flashOverlay,
+            alpha: 0,
+            duration: 300,
+            ease: 'Power2',
+            onComplete: () => {
+                flashOverlay.destroy();
+            }
+        });
+        
+        console.log(`힐 사용! 체력 ${data.healAmount} 회복, 현재 체력: ${data.newHealth}`);
+    }
 }
 
 // 게임 시작
