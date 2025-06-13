@@ -122,6 +122,13 @@ class Player {
                 cooldownEndTime: 0,
                 duration: 10000, // 10초
                 cooldownTime: 10000 // 10초
+            },
+            speedBoost: {
+                isActive: false,
+                endTime: 0,
+                cooldownEndTime: 0,
+                duration: 10000, // 10초
+                cooldownTime: 20000 // 20초
             }
         };
     }
@@ -133,11 +140,13 @@ class Player {
         // 이동 처리
         let moveX = 0;
         let moveY = 0;
+        
+        const currentMoveSpeed = this.getCurrentMoveSpeed();
 
-        if (this.movement.left) moveX -= this.stats.moveSpeed;
-        if (this.movement.right) moveX += this.stats.moveSpeed;
-        if (this.movement.up) moveY -= this.stats.moveSpeed;
-        if (this.movement.down) moveY += this.stats.moveSpeed;
+        if (this.movement.left) moveX -= currentMoveSpeed;
+        if (this.movement.right) moveX += currentMoveSpeed;
+        if (this.movement.up) moveY -= currentMoveSpeed;
+        if (this.movement.down) moveY += currentMoveSpeed;
 
         // 대각선 이동 정규화
         if (moveX !== 0 && moveY !== 0) {
@@ -174,6 +183,18 @@ class Player {
                 socket.emit('skill_deactivated', { skillType: 'rapid_fire' });
             }
         }
+        
+        // 가속 스킬 지속시간 체크
+        if (this.skills.speedBoost.isActive && now >= this.skills.speedBoost.endTime) {
+            this.skills.speedBoost.isActive = false;
+            console.log(`플레이어 ${this.id}의 가속 스킬 종료`);
+            
+            // 해당 플레이어에게 스킬 종료 알림
+            const socket = [...io.sockets.sockets.values()].find(s => s.id === this.id);
+            if (socket) {
+                socket.emit('skill_deactivated', { skillType: 'speed_boost' });
+            }
+        }
     }
 
     activateRapidFireSkill() {
@@ -193,9 +214,31 @@ class Player {
         return true;
     }
 
+    activateSpeedBoostSkill() {
+        const now = Date.now();
+        
+        // 쿨다운 체크
+        if (now < this.skills.speedBoost.cooldownEndTime) {
+            return false; // 쿨다운 중
+        }
+        
+        // 스킬 활성화
+        this.skills.speedBoost.isActive = true;
+        this.skills.speedBoost.endTime = now + this.skills.speedBoost.duration;
+        this.skills.speedBoost.cooldownEndTime = now + this.skills.speedBoost.duration + this.skills.speedBoost.cooldownTime;
+        
+        console.log(`플레이어 ${this.id}의 가속 스킬 활성화`);
+        return true;
+    }
+
     getCurrentFireRate() {
         // 연사 스킬이 활성화되면 발사 속도 10배 증가
         return this.skills.rapidFire.isActive ? this.stats.fireRate / 10 : this.stats.fireRate;
+    }
+
+    getCurrentMoveSpeed() {
+        // 가속 스킬이 활성화되면 이동 속도 5배 증가
+        return this.skills.speedBoost.isActive ? this.stats.moveSpeed * 5 : this.stats.moveSpeed;
     }
 
     // 레벨업 아이템 충돌 체크
@@ -431,6 +474,14 @@ io.on('connection', (socket) => {
                 skillType: 'rapid_fire',
                 success: success,
                 skillData: player.skills.rapidFire
+            });
+        } else if (skillType === 'speed_boost') {
+            const success = player.activateSpeedBoostSkill();
+            // 클라이언트에 스킬 상태 전송
+            socket.emit('skill_result', {
+                skillType: 'speed_boost',
+                success: success,
+                skillData: player.skills.speedBoost
             });
         }
     });
