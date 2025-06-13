@@ -22,12 +22,12 @@ const GAME_CONFIG = {
         RAPID_FIRE: {
             DURATION: 10000,        // 10초
             COOLDOWN: 10000,        // 10초
-            FIRE_RATE_MULTIPLIER: 10 // 10배 빠르게
+            FIRE_RATE_MULTIPLIER: 5 // 5배 빠르게 (1000ms → 200ms)
         },
         SPEED_BOOST: {
             DURATION: 10000,        // 10초
             COOLDOWN: 20000,        // 20초
-            SPEED_MULTIPLIER: 3     // 5배 빠르게
+            SPEED_MULTIPLIER: 3     // 3배 빠르게
         }
     }
 };
@@ -89,7 +89,7 @@ class Player {
             health: 100,
             maxHealth: 100,
             attackPower: 10,
-            fireRate: 300,
+            fireRate: 1000, // 1초에 1발 (1000ms)
             moveSpeed: GAME_CONFIG.PLAYER_SPEED
         };
         
@@ -270,9 +270,9 @@ class Player {
         // 연사 스킬이 활성화되면 발사 속도 증가 (서버 설정 사용)
         if (this.skills.rapidFire.isActive) {
             const multiplier = GAME_CONFIG.SKILLS.RAPID_FIRE.FIRE_RATE_MULTIPLIER;
-            return this.stats.fireRate / multiplier;
+            return this.stats.fireRate / multiplier; // 1000ms / 5 = 200ms (1초에 5발)
         }
-        return this.stats.fireRate;
+        return this.stats.fireRate; // 기본 1000ms (1초에 1발)
     }
 
     getCurrentMoveSpeed() {

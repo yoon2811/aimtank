@@ -162,14 +162,14 @@ function create() {
     socket.on('skill_result', (data) => {
         if (data.skillType === 'rapid_fire') {
             if (data.success) {
-                console.log('연사 스킬 활성화! 10초 동안 10배 빠른 발사!');
+                console.log('연사 스킬 활성화! 10초 동안 5배 빠른 발사!');
                 playSkillActivationSound();
             } else {
                 console.log('연사 스킬 쿨다운 중입니다.');
             }
         } else if (data.skillType === 'speed_boost') {
             if (data.success) {
-                console.log('가속 스킬 활성화! 10초 동안 5배 빠른 이동!');
+                console.log('가속 스킬 활성화! 10초 동안 3배 빠른 이동!');
                 playSpeedBoostActivationSound();
             } else {
                 console.log('가속 스킬 쿨다운 중입니다.');
@@ -621,7 +621,7 @@ function updateGameState(state) {
         bullets.delete(id);
     });
     
-    // 로컬 플레이어 UI 업데이트
+        // 로컬 플레이어 UI 업데이트
     const localPlayer = state.players[socket.id];
     if (localPlayer) {
         updateUI(localPlayer.stats, localPlayer.pvpStats);
@@ -660,6 +660,9 @@ function updateGameState(state) {
             speedBoostSkill.cooldownRemaining = Math.max(0, serverSkill.cooldownEndTime - now);
         }
     }
+    
+    // 스코어보드 업데이트 (모든 플레이어 정보)
+    updateScoreboard(state.players);
 }
 
 function createPlayer(id, data) {
@@ -775,7 +778,7 @@ function updateRenderables() {
 // UI 관련 함수들
 function createUI() {
     // UI 패널 (PVP용으로 크기 조정)
-    const uiPanel = gameScene.add.rectangle(15, 15, 280, 80, 0x000000, 0.7);
+    const uiPanel = gameScene.add.rectangle(15, 15, 280, 60, 0x000000, 0.7);
     uiPanel.setOrigin(0, 0);
     uiPanel.setScrollFactor(0);
     uiPanel.setStrokeStyle(1, 0x444444);
@@ -813,15 +816,6 @@ function createUI() {
     });
     gameScene.healthText.setScrollFactor(0);
     gameScene.healthText.setDepth(10);
-    
-    // 스탯 텍스트 (간소화)
-    gameScene.statsText = gameScene.add.text(25, 70, 'ATK: 10 | SPD: 160', {
-        fontSize: '12px',
-        fill: '#cccccc',
-        fontFamily: 'Arial'
-    });
-    gameScene.statsText.setScrollFactor(0);
-    gameScene.statsText.setDepth(10);
     
     // 스킬 UI 아이콘 (좌하단)
     const skillIconSize = 50;
@@ -1032,6 +1026,9 @@ function createUI() {
         size: skillIconSize
     };
     
+    // === 스코어보드 UI (우상단) ===
+    createScoreboard();
+    
     // 조작법 안내 (우하단) - PVP 게임용
     const controlsText = gameScene.add.text(
         gameConfig.width - 20,
@@ -1070,9 +1067,266 @@ function updateUI(stats, pvpStats) {
     
     // 체력 텍스트 업데이트
     gameScene.healthText.setText(`${stats.health}/${stats.maxHealth}`);
+}
+
+// 스코어보드 생성 함수
+function createScoreboard() {
+    const scoreboardWidth = 280;
+    const scoreboardX = 15; // 상단 UI와 같은 X 위치
+    const scoreboardY = 85; // 상단 UI 아래
     
-    // 스탯 텍스트 업데이트 (간소화)
-    gameScene.statsText.setText(`ATK: ${stats.attackPower} | SPD: ${stats.moveSpeed}`);
+    // 스코어보드 상태 (접힘/펼침)
+    gameScene.scoreboardExpanded = false;
+    
+    // 스코어보드 헤더 (항상 보이는 부분)
+    const headerHeight = 35;
+    gameScene.scoreboardHeader = gameScene.add.rectangle(
+        scoreboardX + scoreboardWidth/2,
+        scoreboardY + headerHeight/2,
+        scoreboardWidth,
+        headerHeight,
+        0x000000,
+        0.8
+    );
+    gameScene.scoreboardHeader.setStrokeStyle(2, 0x444444);
+    gameScene.scoreboardHeader.setScrollFactor(0);
+    gameScene.scoreboardHeader.setDepth(10);
+    
+    // 스코어보드 제목 (클릭 가능)
+    gameScene.scoreboardTitle = gameScene.add.text(
+        scoreboardX + 15,
+        scoreboardY + 10,
+        '▶ SCOREBOARD (클릭하여 펼치기)',
+        {
+            fontSize: '14px',
+            fill: '#ffff00',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.scoreboardTitle.setScrollFactor(0);
+    gameScene.scoreboardTitle.setDepth(11);
+    gameScene.scoreboardTitle.setInteractive({ useHandCursor: true });
+    
+    // 스코어보드 본문 (접힐 수 있는 부분)
+    const bodyHeight = 180;
+    gameScene.scoreboardBody = gameScene.add.rectangle(
+        scoreboardX + scoreboardWidth/2,
+        scoreboardY + headerHeight + bodyHeight/2,
+        scoreboardWidth,
+        bodyHeight,
+        0x000000,
+        0.8
+    );
+    gameScene.scoreboardBody.setStrokeStyle(2, 0x444444);
+    gameScene.scoreboardBody.setScrollFactor(0);
+    gameScene.scoreboardBody.setDepth(10);
+    gameScene.scoreboardBody.setVisible(false); // 처음에는 숨김
+    
+    // 테이블 헤더 배경
+    gameScene.scoreboardHeaderBg = gameScene.add.rectangle(
+        scoreboardX + scoreboardWidth/2,
+        scoreboardY + headerHeight + 20,
+        scoreboardWidth - 10,
+        25,
+        0x333333,
+        0.8
+    );
+    gameScene.scoreboardHeaderBg.setStrokeStyle(1, 0x666666);
+    gameScene.scoreboardHeaderBg.setScrollFactor(0);
+    gameScene.scoreboardHeaderBg.setDepth(10);
+    gameScene.scoreboardHeaderBg.setVisible(false);
+    
+    // 컬럼 헤더들 (개별적으로 배치)
+    gameScene.scoreboardPlayerHeader = gameScene.add.text(
+        scoreboardX + 20,
+        scoreboardY + headerHeight + 15,
+        'PLAYER',
+        {
+            fontSize: '12px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.scoreboardPlayerHeader.setScrollFactor(0);
+    gameScene.scoreboardPlayerHeader.setDepth(11);
+    gameScene.scoreboardPlayerHeader.setVisible(false);
+    
+    gameScene.scoreboardKillHeader = gameScene.add.text(
+        scoreboardX + 180,
+        scoreboardY + headerHeight + 15,
+        'KILLS',
+        {
+            fontSize: '12px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.scoreboardKillHeader.setScrollFactor(0);
+    gameScene.scoreboardKillHeader.setDepth(11);
+    gameScene.scoreboardKillHeader.setVisible(false);
+    
+    gameScene.scoreboardDeathHeader = gameScene.add.text(
+        scoreboardX + 230,
+        scoreboardY + headerHeight + 15,
+        'DEATHS',
+        {
+            fontSize: '12px',
+            fill: '#ffffff',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    gameScene.scoreboardDeathHeader.setScrollFactor(0);
+    gameScene.scoreboardDeathHeader.setDepth(11);
+    gameScene.scoreboardDeathHeader.setVisible(false);
+    
+    // 플레이어 목록을 위한 그룹
+    gameScene.scoreboardPlayers = gameScene.add.group();
+    
+    // 스코어보드 위치 정보 저장
+    gameScene.scoreboardInfo = {
+        x: scoreboardX,
+        y: scoreboardY,
+        width: scoreboardWidth,
+        headerHeight: headerHeight,
+        bodyHeight: bodyHeight,
+        startY: scoreboardY + headerHeight + 45
+    };
+    
+    // 클릭 이벤트 처리
+    gameScene.scoreboardTitle.on('pointerdown', toggleScoreboard);
+}
+
+// 스코어보드 토글 함수
+function toggleScoreboard() {
+    if (!gameScene.scoreboardExpanded) {
+        // 펼치기
+        gameScene.scoreboardExpanded = true;
+        gameScene.scoreboardTitle.setText('▼ SCOREBOARD (클릭하여 접기)');
+        gameScene.scoreboardBody.setVisible(true);
+        gameScene.scoreboardHeaderBg.setVisible(true);
+        gameScene.scoreboardPlayerHeader.setVisible(true);
+        gameScene.scoreboardKillHeader.setVisible(true);
+        gameScene.scoreboardDeathHeader.setVisible(true);
+        
+        // 플레이어 목록도 보이게 설정
+        gameScene.scoreboardPlayers.children.entries.forEach(player => {
+            player.setVisible(true);
+        });
+    } else {
+        // 접기
+        gameScene.scoreboardExpanded = false;
+        gameScene.scoreboardTitle.setText('▶ SCOREBOARD (클릭하여 펼치기)');
+        gameScene.scoreboardBody.setVisible(false);
+        gameScene.scoreboardHeaderBg.setVisible(false);
+        gameScene.scoreboardPlayerHeader.setVisible(false);
+        gameScene.scoreboardKillHeader.setVisible(false);
+        gameScene.scoreboardDeathHeader.setVisible(false);
+        
+        // 플레이어 목록도 숨기기
+        gameScene.scoreboardPlayers.children.entries.forEach(player => {
+            player.setVisible(false);
+        });
+    }
+}
+
+// 스코어보드 업데이트 함수
+function updateScoreboard(players) {
+    if (!gameScene.scoreboardPlayers || !gameScene.scoreboardInfo) return;
+    
+    // 기존 플레이어 텍스트들 제거
+    gameScene.scoreboardPlayers.clear(true, true);
+    
+    // 플레이어들을 킬 수 기준으로 정렬 (서버에서 받은 데이터 사용)
+    const sortedPlayers = Object.entries(players).sort((a, b) => {
+        const aKills = a[1].pvpStats ? a[1].pvpStats.kills : 0;
+        const bKills = b[1].pvpStats ? b[1].pvpStats.kills : 0;
+        return bKills - aKills; // 킬 수 내림차순
+    });
+    
+    // 최대 8명까지만 표시
+    const maxPlayers = Math.min(8, sortedPlayers.length);
+    
+    for (let i = 0; i < maxPlayers; i++) {
+        const [playerId, playerData] = sortedPlayers[i];
+        const pvpStats = playerData.pvpStats || { kills: 0, deaths: 0 };
+        
+        // 플레이어 이름 (10자 제한)
+        const displayName = playerId.length > 10 ? playerId.substring(0, 10) + '...' : playerId;
+        
+        // 자신인지 확인
+        const isLocalPlayer = playerId === socket.id;
+        const textColor = isLocalPlayer ? '#00ff00' : '#ffffff';
+        const rowY = gameScene.scoreboardInfo.startY + (i * 18);
+        
+        // 행 배경 (짝수/홀수 구분)
+        const rowBg = gameScene.add.rectangle(
+            gameScene.scoreboardInfo.x + gameScene.scoreboardInfo.width/2,
+            rowY + 7,
+            gameScene.scoreboardInfo.width - 10,
+            16,
+            i % 2 === 0 ? 0x222222 : 0x1a1a1a,
+            0.6
+        );
+        rowBg.setScrollFactor(0);
+        rowBg.setDepth(10);
+        rowBg.setVisible(gameScene.scoreboardExpanded);
+        gameScene.scoreboardPlayers.add(rowBg);
+        
+        // 플레이어 이름
+        const nameText = gameScene.add.text(
+            gameScene.scoreboardInfo.x + 20,
+            rowY,
+            displayName,
+            {
+                fontSize: '11px',
+                fill: textColor,
+                fontFamily: 'Arial',
+                fontStyle: isLocalPlayer ? 'bold' : 'normal'
+            }
+        );
+        nameText.setScrollFactor(0);
+        nameText.setDepth(11);
+        nameText.setVisible(gameScene.scoreboardExpanded);
+        gameScene.scoreboardPlayers.add(nameText);
+        
+        // 킬 수
+        const killText = gameScene.add.text(
+            gameScene.scoreboardInfo.x + 190,
+            rowY,
+            pvpStats.kills.toString(),
+            {
+                fontSize: '11px',
+                fill: textColor,
+                fontFamily: 'Arial',
+                fontStyle: isLocalPlayer ? 'bold' : 'normal'
+            }
+        );
+        killText.setScrollFactor(0);
+        killText.setDepth(11);
+        killText.setVisible(gameScene.scoreboardExpanded);
+        gameScene.scoreboardPlayers.add(killText);
+        
+        // 데스 수
+        const deathText = gameScene.add.text(
+            gameScene.scoreboardInfo.x + 245,
+            rowY,
+            pvpStats.deaths.toString(),
+            {
+                fontSize: '11px',
+                fill: textColor,
+                fontFamily: 'Arial',
+                fontStyle: isLocalPlayer ? 'bold' : 'normal'
+            }
+        );
+        deathText.setScrollFactor(0);
+        deathText.setDepth(11);
+        deathText.setVisible(gameScene.scoreboardExpanded);
+        gameScene.scoreboardPlayers.add(deathText);
+    }
 }
 
 // 오디오 관련 함수들
