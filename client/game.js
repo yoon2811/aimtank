@@ -175,25 +175,37 @@ function handleFiring() {
     if (gameScene.spaceKey.isDown) {
         const now = Date.now();
         if (now - lastFired >= 1000) {
-            // 현재 이동 방향 계산
-            let direction = { x: 0, y: -1 }; // 기본 방향 (위쪽)
+            // 로컬 플레이어의 현재 방향 가져오기
+            const localPlayer = players[socket.id];
+            let direction;
             
-            if (movementState.left && movementState.up) {
-                direction = { x: -1, y: -1 };
-            } else if (movementState.right && movementState.up) {
-                direction = { x: 1, y: -1 };
-            } else if (movementState.left && movementState.down) {
-                direction = { x: -1, y: 1 };
-            } else if (movementState.right && movementState.down) {
-                direction = { x: 1, y: 1 };
-            } else if (movementState.left) {
-                direction = { x: -1, y: 0 };
-            } else if (movementState.right) {
-                direction = { x: 1, y: 0 };
-            } else if (movementState.up) {
-                direction = { x: 0, y: -1 };
-            } else if (movementState.down) {
-                direction = { x: 0, y: 1 };
+            if (localPlayer && localPlayer.data && localPlayer.data.direction) {
+                // 서버에서 받은 플레이어의 현재 방향 사용
+                direction = { 
+                    x: localPlayer.data.direction.x, 
+                    y: localPlayer.data.direction.y 
+                };
+            } else {
+                // 플레이어 데이터가 없는 경우 현재 이동 입력으로 방향 계산
+                direction = { x: 0, y: -1 }; // 기본 방향 (위쪽)
+                
+                if (movementState.left && movementState.up) {
+                    direction = { x: -1, y: -1 };
+                } else if (movementState.right && movementState.up) {
+                    direction = { x: 1, y: -1 };
+                } else if (movementState.left && movementState.down) {
+                    direction = { x: -1, y: 1 };
+                } else if (movementState.right && movementState.down) {
+                    direction = { x: 1, y: 1 };
+                } else if (movementState.left) {
+                    direction = { x: -1, y: 0 };
+                } else if (movementState.right) {
+                    direction = { x: 1, y: 0 };
+                } else if (movementState.up) {
+                    direction = { x: 0, y: -1 };
+                } else if (movementState.down) {
+                    direction = { x: 0, y: 1 };
+                }
             }
             
             // 방향 벡터 정규화
