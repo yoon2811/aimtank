@@ -210,7 +210,7 @@ function create() {
         playFireSound();
     });
     
-    // 힐 효과 이벤트
+    // 회복 효과 이벤트
     socket.on('heal_effect', (data) => {
         showHealEffect(data);
     });
@@ -2167,13 +2167,13 @@ function showOtherPlayerRespawnEffect(data) {
     });
 }
 
-// 힐 효과 표시
+// 회복 효과 표시
 function showHealEffect(data) {
-    // 힐 위치에 초록색 원형 마커
+    // 회복 위치에 초록색 원형 마커
     const healMarker = gameScene.add.circle(data.x, data.y, 20, 0x00ff00, 0.8);
     healMarker.setDepth(500);
     
-    // 힐 마커 애니메이션
+    // 회복 마커 애니메이션
     gameScene.tweens.add({
         targets: healMarker,
         scaleX: 2.5,
@@ -2186,7 +2186,7 @@ function showHealEffect(data) {
         }
     });
     
-    // 힐량 텍스트 표시
+    // 회복량 텍스트 표시
     const healText = gameScene.add.text(data.x, data.y - 30, `+${data.healAmount}`, {
         fontSize: '20px',
         fill: '#00ff00',
@@ -2195,7 +2195,7 @@ function showHealEffect(data) {
         strokeThickness: 2
     }).setDepth(600);
     
-    // 힐 텍스트 애니메이션
+    // 회복 텍스트 애니메이션
     gameScene.tweens.add({
         targets: healText,
         y: data.y - 60,
@@ -2207,7 +2207,7 @@ function showHealEffect(data) {
         }
     });
     
-    // 자신이 힐한 경우 추가 효과
+    // 자신이 회복한 경우 추가 효과
     if (data.playerId === socket.id) {
         // 화면 초록색 플래시 효과
         const flashOverlay = gameScene.add.rectangle(
@@ -2232,7 +2232,7 @@ function showHealEffect(data) {
             }
         });
         
-        console.log(`힐 사용! 체력 ${data.healAmount} 회복, 현재 체력: ${data.newHealth}`);
+        console.log(`회복 사용! 체력 ${data.healAmount} 회복, 현재 체력: ${data.newHealth}`);
     }
 }
 
