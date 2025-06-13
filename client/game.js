@@ -77,6 +77,39 @@ function create() {
         updateGameState(state);
     });
     
+    // 피격 이벤트 브로드캐스트 처리
+    socket.on('player_hit_broadcast', (data) => {
+        // 모든 플레이어에게 동일한 피격 표시
+        showHitDamageEffect(data);
+        
+        if (data.targetId === socket.id) {
+            // 자신이 피격당한 경우에만 추가 효과
+            showSelfHitEffect(data);
+        }
+    });
+    
+    // 킬 이벤트 브로드캐스트 처리
+    socket.on('player_killed_broadcast', (data) => {
+        if (data.attackerId === socket.id) {
+            // 자신이 킬한 경우
+            showKillEffect(data);
+        } else {
+            // 다른 플레이어의 킬을 관전하는 경우
+            showOtherPlayerKillEffect(data);
+        }
+    });
+    
+    // 리스폰 이벤트 브로드캐스트 처리
+    socket.on('player_respawn_broadcast', (data) => {
+        if (data.playerId === socket.id) {
+            // 자신이 리스폰한 경우
+            showRespawnEffect(data);
+        } else {
+            // 다른 플레이어가 리스폰한 경우
+            showOtherPlayerRespawnEffect(data);
+        }
+    });
+    
     // 오디오 초기화
     initAudio();
     
@@ -430,7 +463,7 @@ function createUI() {
     gameScene.expText.setDepth(10);
     
     // 스탯 텍스트
-    gameScene.statsText = gameScene.add.text(25, 90, 'ATK: 1 | SPD: 160', {
+    gameScene.statsText = gameScene.add.text(25, 90, 'HP: 10/10 | ATK: 1 | SPD: 160', {
         fontSize: '12px',
         fill: '#cccccc',
         fontFamily: 'Arial'
@@ -465,6 +498,15 @@ function updateUI(stats) {
     const healthPercent = stats.health / stats.maxHealth;
     healthBar.displayWidth = 168 * healthPercent;
     
+    // 체력에 따른 색상 변경
+    if (healthPercent > 0.6) {
+        healthBar.setFillStyle(0x00ff00); // 녹색
+    } else if (healthPercent > 0.3) {
+        healthBar.setFillStyle(0xffaa00); // 주황색
+    } else {
+        healthBar.setFillStyle(0xff0000); // 빨간색
+    }
+    
     // 경험치바 업데이트
     const expPercent = stats.exp / stats.expToNext;
     expBar.displayWidth = 168 * expPercent;
@@ -472,8 +514,8 @@ function updateUI(stats) {
     // 경험치 텍스트 업데이트
     gameScene.expText.setText(`EXP: ${stats.exp}/${stats.expToNext}`);
     
-    // 스탯 텍스트 업데이트
-    gameScene.statsText.setText(`ATK: ${stats.attackPower} | SPD: ${stats.moveSpeed}`);
+    // 스탯 텍스트 업데이트 (체력 정보 추가)
+    gameScene.statsText.setText(`HP: ${stats.health}/${stats.maxHealth} | ATK: ${stats.attackPower} | SPD: ${stats.moveSpeed}`);
 }
 
 // 오디오 관련 함수들
@@ -600,6 +642,333 @@ function updateMinimap(playerData) {
     // 탱크 방향 표시 (작은 화살표)
     const angle = Math.atan2(playerData.direction.y, playerData.direction.x);
     minimapTank.rotation = angle;
+}
+
+// 피격 효과 표시 - 모든 플레이어에게 동일하게 표시
+function showHitDamageEffect(data) {
+    // 피격 위치에 피해량 표시
+    const damageText = gameScene.add.text(data.targetX, data.targetY - 30, `-${data.damage}`, {
+        fontSize: '20px',
+        fill: '#ff4444',
+        fontWeight: 'bold'
+    }).setDepth(600);
+    
+    // 피해량 텍스트 애니메이션
+    gameScene.tweens.add({
+        targets: damageText,
+        y: data.targetY - 60,
+        alpha: 0,
+        duration: 1000,
+        ease: 'Power2',
+        onComplete: () => {
+            damageText.destroy();
+        }
+    });
+    
+    // 피격 위치에 빨간 원형 마커
+    const hitMarker = gameScene.add.circle(data.targetX, data.targetY, 15, 0xff0000, 0.7);
+    hitMarker.setDepth(500);
+    
+    // 피격 마커 애니메이션
+    gameScene.tweens.add({
+        targets: hitMarker,
+        scaleX: 2,
+        scaleY: 2,
+        alpha: 0,
+        duration: 500,
+        ease: 'Power2',
+        onComplete: () => {
+            hitMarker.destroy();
+        }
+    });
+    
+    console.log(`피격 발생! 공격자: ${data.attackerId}, 피격자: ${data.targetId}, 피해량: ${data.damage}`);
+}
+
+// 리스폰 효과 표시
+function showRespawnEffect(data) {
+    // 리스폰 텍스트 표시
+    const respawnText = gameScene.add.text(400, 300, 'RESPAWN!', {
+        fontSize: '48px',
+        fill: '#00ff00',
+        fontWeight: 'bold'
+    }).setScrollFactor(0).setDepth(1000);
+    
+    // 리스폰 텍스트 애니메이션
+    gameScene.tweens.add({
+        targets: respawnText,
+        scaleX: 1.5,
+        scaleY: 1.5,
+        alpha: 0,
+        duration: 2000,
+        ease: 'Power2',
+        onComplete: () => {
+            respawnText.destroy();
+        }
+    });
+    
+    // 리스폰 사운드
+    playSound(800, 0.1, 'square');
+}
+
+// 적중 효과 표시 (상대방을 맞췄을 때)
+function showSelfHitEffect(data) {
+    // 화면 빨간색 플래시 효과
+    const flashOverlay = gameScene.add.rectangle(
+        gameConfig.width / 2,
+        gameConfig.height / 2,
+        gameConfig.width,
+        gameConfig.height,
+        0xff0000,
+        0.3
+    );
+    flashOverlay.setScrollFactor(0);
+    flashOverlay.setDepth(20);
+    
+    // 플래시 효과 애니메이션
+    gameScene.tweens.add({
+        targets: flashOverlay,
+        alpha: 0,
+        duration: 200,
+        ease: 'Power2',
+        onComplete: () => {
+            flashOverlay.destroy();
+        }
+    });
+    
+    // 피격 텍스트 표시
+    const hitText = gameScene.add.text(
+        gameConfig.width / 2,
+        gameConfig.height / 2 - 50,
+        `-${data.damage}`,
+        {
+            fontSize: '24px',
+            fill: '#ff0000',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    hitText.setOrigin(0.5);
+    hitText.setScrollFactor(0);
+    hitText.setDepth(21);
+    
+    // 피격 텍스트 애니메이션
+    gameScene.tweens.add({
+        targets: hitText,
+        y: hitText.y - 30,
+        alpha: 0,
+        duration: 800,
+        ease: 'Power2',
+        onComplete: () => {
+            hitText.destroy();
+        }
+    });
+    
+    // 화면 흔들림 효과
+    gameScene.cameras.main.shake(200, 0.01);
+    
+    console.log(`피격! 데미지: ${data.damage}, 남은 체력: ${data.remainingHealth}`);
+}
+
+// 킬 효과 표시 (상대방을 죽였을 때)
+function showKillEffect(data) {
+    // 킬 텍스트 (화면 중앙 상단)
+    const killText = gameScene.add.text(
+        gameConfig.width / 2,
+        gameConfig.height / 2 - 100,
+        'KILL!',
+        {
+            fontSize: '36px',
+            fill: '#ffff00',
+            fontFamily: 'Arial',
+            fontStyle: 'bold'
+        }
+    );
+    killText.setOrigin(0.5);
+    killText.setScrollFactor(0);
+    killText.setDepth(21);
+    
+    // 킬 텍스트 애니메이션
+    gameScene.tweens.add({
+        targets: killText,
+        scaleX: 1.3,
+        scaleY: 1.3,
+        y: killText.y - 30,
+        alpha: 0,
+        duration: 1200,
+        ease: 'Power2',
+        onComplete: () => {
+            killText.destroy();
+        }
+    });
+    
+    // 화면 황금색 플래시
+    const flashOverlay = gameScene.add.rectangle(
+        gameConfig.width / 2,
+        gameConfig.height / 2,
+        gameConfig.width,
+        gameConfig.height,
+        0xffff00,
+        0.2
+    );
+    flashOverlay.setScrollFactor(0);
+    flashOverlay.setDepth(20);
+    
+    gameScene.tweens.add({
+        targets: flashOverlay,
+        alpha: 0,
+        duration: 400,
+        ease: 'Power2',
+        onComplete: () => {
+            flashOverlay.destroy();
+        }
+    });
+    
+    // 킬 사운드 재생
+    playKillSound();
+    
+    console.log(`킬! 상대방을 처치했습니다.`);
+}
+
+// 적중 확인 사운드
+function playHitConfirmSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(1200, audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.15);
+    } catch (error) {
+        console.log('적중 확인 사운드 재생 오류:', error);
+    }
+}
+
+// 킬 사운드
+function playKillSound() {
+    if (!audioContext || !isSoundEnabled) return;
+    
+    try {
+        // 첫 번째 음 (높은 음)
+        const osc1 = audioContext.createOscillator();
+        const gain1 = audioContext.createGain();
+        
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(1000, audioContext.currentTime);
+        gain1.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        osc1.connect(gain1);
+        gain1.connect(audioContext.destination);
+        osc1.start(audioContext.currentTime);
+        osc1.stop(audioContext.currentTime + 0.3);
+        
+        // 두 번째 음 (낮은 음, 약간 지연)
+        setTimeout(() => {
+            const osc2 = audioContext.createOscillator();
+            const gain2 = audioContext.createGain();
+            
+            osc2.type = 'triangle';
+            osc2.frequency.setValueAtTime(600, audioContext.currentTime);
+            gain2.gain.setValueAtTime(0.2, audioContext.currentTime);
+            gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+            
+            osc2.connect(gain2);
+            gain2.connect(audioContext.destination);
+            osc2.start(audioContext.currentTime);
+            osc2.stop(audioContext.currentTime + 0.4);
+        }, 100);
+        
+    } catch (error) {
+        console.log('킬 사운드 재생 오류:', error);
+    }
+}
+
+// 다른 플레이어의 킬을 관전할 때의 효과
+function showOtherPlayerKillEffect(data) {
+    // 킬 위치에 효과 표시
+    const killMarker = gameScene.add.circle(data.targetX, data.targetY, 25, 0xffff00, 0.8);
+    killMarker.setDepth(500);
+    
+    // 킬 마커 애니메이션
+    gameScene.tweens.add({
+        targets: killMarker,
+        scaleX: 3,
+        scaleY: 3,
+        alpha: 0,
+        duration: 1000,
+        ease: 'Power2',
+        onComplete: () => {
+            killMarker.destroy();
+        }
+    });
+    
+    // 킬 텍스트 표시
+    const killText = gameScene.add.text(data.targetX, data.targetY - 40, 'ELIMINATED!', {
+        fontSize: '24px',
+        fill: '#ffff00',
+        fontWeight: 'bold'
+    }).setDepth(600);
+    
+    gameScene.tweens.add({
+        targets: killText,
+        y: data.targetY - 80,
+        alpha: 0,
+        duration: 1500,
+        ease: 'Power2',
+        onComplete: () => {
+            killText.destroy();
+        }
+    });
+}
+
+// 다른 플레이어의 리스폰을 관전할 때의 효과
+function showOtherPlayerRespawnEffect(data) {
+    // 리스폰 위치에 효과 표시
+    const respawnMarker = gameScene.add.circle(data.x, data.y, 20, 0x00ff00, 0.6);
+    respawnMarker.setDepth(500);
+    
+    // 리스폰 마커 애니메이션
+    gameScene.tweens.add({
+        targets: respawnMarker,
+        scaleX: 2.5,
+        scaleY: 2.5,
+        alpha: 0,
+        duration: 1000,
+        ease: 'Power2',
+        onComplete: () => {
+            respawnMarker.destroy();
+        }
+    });
+    
+    // 리스폰 텍스트 표시
+    const respawnText = gameScene.add.text(data.x, data.y - 30, 'RESPAWN', {
+        fontSize: '18px',
+        fill: '#00ff00',
+        fontWeight: 'bold'
+    }).setDepth(600);
+    
+    gameScene.tweens.add({
+        targets: respawnText,
+        y: data.y - 60,
+        alpha: 0,
+        duration: 1200,
+        ease: 'Power2',
+        onComplete: () => {
+            respawnText.destroy();
+        }
+    });
 }
 
 // 게임 시작

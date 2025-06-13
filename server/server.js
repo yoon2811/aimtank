@@ -106,8 +106,8 @@ class Player {
             level: 1,
             exp: 0,
             expToNext: 10,
-            health: 100,
-            maxHealth: 100,
+            health: 10,
+            maxHealth: 10,
             attackPower: 1,
             fireRate: 1000,
             moveSpeed: GAME_CONFIG.PLAYER_SPEED
@@ -190,14 +190,60 @@ class Player {
         this.stats.exp -= this.stats.expToNext;
         this.stats.expToNext = Math.ceil(this.stats.expToNext * 1.5);
         
-        // 자동 스탯 증가 (간단하게)
-        this.stats.maxHealth += 20;
-        this.stats.health = Math.min(this.stats.health + 20, this.stats.maxHealth);
+        // 자동 스탯 증가 (체력 증가량도 조정)
+        this.stats.maxHealth += 5;
+        this.stats.health = Math.min(this.stats.health + 5, this.stats.maxHealth);
         this.stats.attackPower += 1;
         this.stats.fireRate = Math.max(200, this.stats.fireRate * 0.9);
         this.stats.moveSpeed += 10;
         
         console.log(`플레이어 ${this.id} 레벨업! 레벨: ${this.stats.level}`);
+    }
+
+    takeDamage(damage, attackerId) {
+        this.stats.health -= damage;
+        console.log(`플레이어 ${this.id}가 ${attackerId}에게 ${damage}의 피해를 입었습니다. 남은 체력: ${this.stats.health}`);
+        
+        // 모든 플레이어에게 피격 이벤트 브로드캐스트
+        io.emit('player_hit_broadcast', {
+            damage: damage,
+            attackerId: attackerId,
+            targetId: this.id,
+            targetX: this.x,
+            targetY: this.y,
+            remainingHealth: this.stats.health
+        });
+        
+        if (this.stats.health <= 0) {
+            this.stats.health = 0;
+            console.log(`플레이어 ${this.id}가 ${attackerId}에게 사망했습니다.`);
+            
+            // 모든 플레이어에게 킬 이벤트 브로드캐스트
+            io.emit('player_killed_broadcast', {
+                attackerId: attackerId,
+                targetId: this.id,
+                targetX: this.x,
+                targetY: this.y
+            });
+            
+            this.respawn();
+        }
+    }
+
+    respawn() {
+        // 리스폰 시 체력 회복 및 위치 초기화
+        this.stats.health = this.stats.maxHealth;
+        this.x = GAME_CONFIG.WORLD_WIDTH / 2 + (Math.random() - 0.5) * 200;
+        this.y = GAME_CONFIG.WORLD_HEIGHT / 2 + (Math.random() - 0.5) * 200;
+        console.log(`플레이어 ${this.id}가 리스폰했습니다.`);
+        
+        // 모든 플레이어에게 리스폰 이벤트 브로드캐스트
+        io.emit('player_respawn_broadcast', {
+            playerId: this.id,
+            x: this.x,
+            y: this.y,
+            health: this.stats.health
+        });
     }
 }
 
@@ -221,6 +267,28 @@ class Bullet {
         return !(this.x < -50 || this.x > GAME_CONFIG.WORLD_WIDTH + 50 ||
                 this.y < -50 || this.y > GAME_CONFIG.WORLD_HEIGHT + 50 ||
                 Date.now() - this.createdAt > GAME_CONFIG.BULLET_LIFETIME);
+    }
+
+    // 총알과 플레이어 충돌 체크
+    checkPlayerCollision(players) {
+        for (let playerId in players) {
+            // 자신이 쏜 총알은 자신과 충돌하지 않음
+            if (playerId === this.playerId) continue;
+            
+            const player = players[playerId];
+            const distance = Math.sqrt(
+                Math.pow(this.x - player.x, 2) + 
+                Math.pow(this.y - player.y, 2)
+            );
+            
+            // 플레이어 히트박스 (반지름 20)
+            if (distance < 20) {
+                // 충돌 발생
+                player.takeDamage(this.damage, this.playerId);
+                return true; // 총알 제거
+            }
+        }
+        return false; // 충돌 없음
     }
 }
 
@@ -315,9 +383,20 @@ const gameLoop = () => {
         player.checkItemCollision();
     });
 
-    // 총알 업데이트
+    // 총알 업데이트 및 충돌 검사
     gameState.bullets = gameState.bullets.filter(bullet => {
-        return bullet.update(deltaTime);
+        // 총알 위치 업데이트
+        const isAlive = bullet.update(deltaTime);
+        if (!isAlive) return false;
+        
+        // 플레이어와 충돌 검사
+        const hitPlayer = bullet.checkPlayerCollision(gameState.players);
+        if (hitPlayer) {
+            console.log(`총알 충돌! 총알 ID: ${bullet.id}`);
+            return false; // 총알 제거
+        }
+        
+        return true; // 총알 유지
     });
 
     // 게임 상태 브로드캐스트
