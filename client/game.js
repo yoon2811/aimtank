@@ -4,7 +4,7 @@ const gameConfig = {
     width: Math.floor(window.innerWidth * 0.9),
     height: Math.floor(window.innerHeight * 0.9),
     parent: 'gameContainer',
-    backgroundColor: '#000000',
+    backgroundColor: '#808080',
     physics: {
         default: 'arcade',
         arcade: {
@@ -29,6 +29,46 @@ let mapElements = [];
 let cursors;
 let lastFired = 0;
 let isPaused = false;
+
+// 플레이어 색상 관리
+const availableColors = [
+    0x0000ff, // 파랑
+    0x00ffff, // 청록
+    0xffff00, // 노랑
+    0xff00ff, // 마젠타
+    0x00ff80, // 연두
+    0x8000ff, // 보라
+    0xff8000, // 주황
+    0x0080ff, // 하늘색
+    0x80ff00, // 라임
+    0xff0080  // 핑크
+];
+const usedColors = new Map(); // playerId -> colorIndex
+
+// 색상 관리 함수들
+function assignPlayerColor(playerId) {
+    if (usedColors.has(playerId)) {
+        return availableColors[usedColors.get(playerId)];
+    }
+    
+    // 사용 가능한 색상 찾기
+    const usedIndices = new Set(usedColors.values());
+    for (let i = 0; i < availableColors.length; i++) {
+        if (!usedIndices.has(i)) {
+            usedColors.set(playerId, i);
+            return availableColors[i];
+        }
+    }
+    
+    // 모든 색상이 사용 중인 경우 랜덤 선택
+    const randomIndex = Math.floor(Math.random() * availableColors.length);
+    usedColors.set(playerId, randomIndex);
+    return availableColors[randomIndex];
+}
+
+function releasePlayerColor(playerId) {
+    usedColors.delete(playerId);
+}
 
 // 이동 상태 추적
 let movementState = {
@@ -129,8 +169,8 @@ function createMapFromServer(data) {
     // 월드 크기 설정
     gameScene.physics.world.setBounds(0, 0, worldSize.width, worldSize.height);
     
-    // 맵 배경 생성 (검정색)
-    const mapBackground = gameScene.add.rectangle(0, 0, worldSize.width, worldSize.height, 0x000000);
+    // 맵 배경 생성 (회색)
+    const mapBackground = gameScene.add.rectangle(0, 0, worldSize.width, worldSize.height, 0x808080);
     mapBackground.setOrigin(0, 0);
     
     // 서버에서 받은 맵 요소들 렌더링 (격자만)
@@ -262,6 +302,7 @@ function updateGameState(state) {
         if (!state.players[id]) {
             if (players[id].graphic) players[id].graphic.destroy();
             if (players[id].barrel) players[id].barrel.destroy();
+            releasePlayerColor(id); // 색상 해제
             delete players[id];
         }
     });
@@ -319,7 +360,7 @@ function updateGameState(state) {
 
 function createPlayer(id, data) {
     const isLocalPlayer = id === socket.id;
-    const color = isLocalPlayer ? 0x00ff00 : 0xff0000;
+    const color = isLocalPlayer ? 0x00ff00 : assignPlayerColor(id);
     
     const player = {
         id,
@@ -591,13 +632,13 @@ function createMinimap(worldSize) {
     minimapBg.setScrollFactor(0);
     minimapBg.setDepth(10);
     
-    // 미니맵 월드 표시 (검정색)
+    // 미니맵 월드 표시 (회색)
     const minimapWorld = gameScene.add.rectangle(
         minimapX + minimapSize / 2, 
         minimapY + minimapSize / 2, 
         minimapSize - 10, 
         minimapSize - 10, 
-        0x000000
+        0x808080
     );
     minimapWorld.setStrokeStyle(1, 0x333333);
     minimapWorld.setScrollFactor(0);
